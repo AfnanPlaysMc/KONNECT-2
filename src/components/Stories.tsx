@@ -103,6 +103,8 @@ export default function Stories({ profile, friendIds, onClose }: StoriesProps) {
       }
 
       setStories(filteredStories);
+    }, (error) => {
+      console.warn("Stories onSnapshot handled error:", error);
     });
 
     return () => unsubscribe();

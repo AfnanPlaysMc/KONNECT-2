@@ -53,6 +53,8 @@ export default function Sidebar({
         list.push({ ...doc.data(), id: doc.id });
       });
       setIncomingRequests(list);
+    }, (error) => {
+      console.warn("Friend requests onSnapshot handled error:", error);
     });
     return () => unsubscribe();
   }, [profile.uid]);
@@ -148,6 +150,8 @@ export default function Sidebar({
       }
 
       setChats(chatsList);
+    }, (error) => {
+      console.warn("Chats onSnapshot handled error:", error);
     });
 
     return () => unsubscribe();

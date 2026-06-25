@@ -100,6 +100,8 @@ export default function ChatWindow({
           console.error(e);
         }
       }
+    }, (error) => {
+      console.warn("Messages onSnapshot handled error:", error);
     });
 
     return () => unsubscribe();
@@ -179,6 +181,8 @@ export default function ChatWindow({
           setCallSession(null);
         }
       }
+    }, (error) => {
+      console.warn("ChatDoc onSnapshot handled error:", error);
     });
 
     return () => {
