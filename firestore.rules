@@ -8,7 +8,8 @@ service cloud.firestore {
 
     // Profiles collection rules
     match /profiles/{profileId} {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     // Chats collection rules

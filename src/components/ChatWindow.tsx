@@ -152,16 +152,36 @@ export default function ChatWindow({
                 }, 1000);
               }
             } else if (activeCall.status === 'ringing') {
-              // Play electronic ringing sound if we are the receiver and sound is not already playing
-              if (activeCall.receiverId === myProfile.uid && !callRingNode.current) {
+              // Play electronic ringing sound if we are the receiver or caller and sound is not already playing
+              if (!callRingNode.current) {
                 try {
                   const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
                   const osc = audioCtx.createOscillator();
                   const gainNode = audioCtx.createGain();
                   osc.connect(gainNode);
                   gainNode.connect(audioCtx.destination);
-                  osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-                  gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                  
+                  osc.frequency.setValueAtTime(activeCall.receiverId === myProfile.uid ? 440 : 400, audioCtx.currentTime);
+                  
+                  const now = audioCtx.currentTime;
+                  gainNode.gain.setValueAtTime(0, now);
+                  for (let i = 0; i < 60; i += 3) {
+                    if (activeCall.receiverId === myProfile.uid) {
+                      // Receiver ring tone: beep-beep, pause
+                      gainNode.gain.setValueAtTime(0.1, now + i);
+                      gainNode.gain.setValueAtTime(0.1, now + i + 0.4);
+                      gainNode.gain.setValueAtTime(0, now + i + 0.5);
+                      gainNode.gain.setValueAtTime(0.1, now + i + 0.7);
+                      gainNode.gain.setValueAtTime(0.1, now + i + 1.1);
+                      gainNode.gain.setValueAtTime(0, now + i + 1.2);
+                    } else {
+                      // Caller ringback tone: long beep, pause
+                      gainNode.gain.setValueAtTime(0.08, now + i);
+                      gainNode.gain.setValueAtTime(0.08, now + i + 1.2);
+                      gainNode.gain.setValueAtTime(0, now + i + 1.4);
+                    }
+                  }
+                  
                   osc.start();
                   callRingNode.current = { osc, ctx: audioCtx };
                 } catch (e) {}
@@ -413,7 +433,7 @@ export default function ChatWindow({
     const callPayload = {
       id: 'call_' + Date.now(),
       type,
-      status: 'connected' as const, // Directly connected so it loads immediately on both ends!
+      status: 'ringing' as const, // Start in ringing state
       roomId: uniqueRoomId,
       callerId: myProfile.uid,
       receiverId: partnerProfile.uid
