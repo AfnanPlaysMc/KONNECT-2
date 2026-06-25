@@ -1,0 +1,11 @@
+{
+  "name": "Konnect",
+  "description": "Sleek and professional messaging application with friends adding, voice and video calling, privacy controls, custom themes, and interactive mini-games.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
