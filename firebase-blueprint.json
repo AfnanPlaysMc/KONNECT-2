@@ -1,0 +1,162 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "Profile",
+      "description": "User profile document stored in profiles collection",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Unique identifier of the user"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Human-friendly display name of the user"
+        },
+        "username": {
+          "type": "string",
+          "description": "Unique alphanumeric username of the user"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user"
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "Optional phone number associated with the profile"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Avatar photo URL"
+        },
+        "status": {
+          "type": "string",
+          "description": "Current presence status (online, offline, etc.)"
+        },
+        "lastSeen": {
+          "type": "string",
+          "description": "ISO timestamp of last activity"
+        },
+        "theme": {
+          "type": "string",
+          "description": "User preference theme"
+        },
+        "stealthMode": {
+          "type": "boolean",
+          "description": "Stealth presence indicator"
+        },
+        "readReceipts": {
+          "type": "boolean",
+          "description": "Preference for sending/receiving read receipts"
+        },
+        "blockedUsers": {
+          "type": "array",
+          "description": "List of user UIDs blocked by this user"
+        },
+        "closeFriends": {
+          "type": "array",
+          "description": "List of user UIDs marked as close friends"
+        }
+      },
+      "required": ["uid", "displayName", "username", "email"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "Conversations between users",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the conversation"
+        },
+        "participantIds": {
+          "type": "array",
+          "description": "List of user UIDs participating in this conversation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of the last message/call activity"
+        }
+      },
+      "required": ["id", "participantIds", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Messages sent inside a conversation subcollection",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the message"
+        },
+        "senderId": {
+          "type": "string",
+          "description": "UID of the sender"
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Display name of the sender"
+        },
+        "type": {
+          "type": "string",
+          "description": "Type of the message (text, voice, image, call_log, etc.)"
+        },
+        "content": {
+          "type": "string",
+          "description": "Encoded content or resource identifier"
+        },
+        "read": {
+          "type": "boolean",
+          "description": "Indicates if the message has been seen by the recipient"
+        }
+      },
+      "required": ["id", "senderId", "senderName", "type", "content", "read"]
+    },
+    "Story": {
+      "title": "Story",
+      "description": "User short-lived stories",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the story"
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the user posting the story"
+        },
+        "mediaUrl": {
+          "type": "string",
+          "description": "URL of the story image"
+        },
+        "type": {
+          "type": "string",
+          "description": "Content type (image, etc.)"
+        },
+        "caption": {
+          "type": "string",
+          "description": "Optional textual caption"
+        }
+      },
+      "required": ["id", "userId", "mediaUrl", "type"]
+    }
+  },
+  "firestore": {
+    "/profiles/{profileId}": {
+      "schema": "Profile",
+      "description": "User profile collection indexed by user UID"
+    },
+    "/chats/{chatId}": {
+      "schema": "Chat",
+      "description": "Conversation collection indexed by chatId"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Message subcollection within each chat conversation"
+    },
+    "/stories/{storyId}": {
+      "schema": "Story",
+      "description": "Stories shared by users"
+    }
+  }
+}

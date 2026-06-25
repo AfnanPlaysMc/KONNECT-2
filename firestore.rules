@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Profiles collection rules
+    match /profiles/{profileId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Chats collection rules
+    match /chats/{chatId} {
+      allow read, write: if isAuthenticated();
+      
+      match /messages/{messageId} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // Stories collection rules
+    match /stories/{storyId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

@@ -7,7 +7,7 @@ import {
   signOut
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, collection, where, getDocs } from 'firebase/firestore';
-import { auth, db, googleProvider } from '../firebase';
+import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile, THEMES } from '../types';
 import { MessageSquare, Shield, Key, Mail, Phone, ArrowRight, User, Check, Flame, Upload } from 'lucide-react';
 
@@ -116,8 +116,13 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const checkUserProfile = async (uid: string) => {
     try {
       const docRef = doc(db, 'profiles', uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
+      let docSnap;
+      try {
+        docSnap = await getDoc(docRef);
+      } catch (e) {
+        handleFirestoreError(e, OperationType.GET, `profiles/${uid}`);
+      }
+      if (docSnap && docSnap.exists()) {
         const data = docSnap.data() as UserProfile;
         onAuthSuccess(data);
       } else {
