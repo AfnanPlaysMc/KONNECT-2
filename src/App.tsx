@@ -180,7 +180,7 @@ export default function App() {
         />
 
         {/* PRIMARY MAIN PANEL */}
-        <div className="flex-1 flex flex-col bg-slate-950/10 relative h-full">
+        <div className={`flex-1 flex flex-col bg-slate-950/10 relative h-full ${activeChatId ? 'flex' : 'hidden sm:flex'}`}>
           {activeChatId && activePartner ? (
             <ChatWindow 
               chatId={activeChatId}
@@ -193,6 +193,10 @@ export default function App() {
               onSetGameChallenge={(gameId) => {
                 setInitialLaunchGameId(gameId);
                 setShowGames(true);
+              }}
+              onCloseChat={() => {
+                setActiveChatId(null);
+                setActivePartner(null);
               }}
             />
           ) : (
@@ -229,107 +233,6 @@ export default function App() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* RIGHT PANEL: GAMES & TOOLS (High Density Theme) */}
-        <div className="hidden lg:flex w-72 bg-[#0E1013] border-l border-neutral-800 flex-col flex-shrink-0 text-[#E4E6EB]">
-          {/* Profile Quick View */}
-          {(() => {
-            const displayProfile = activePartner || profile;
-            return (
-              <div className="p-5 border-b border-neutral-800">
-                <div 
-                  className="w-full h-20 bg-gradient-to-r from-blue-900 to-indigo-900 rounded-xl relative overflow-hidden bg-cover bg-center"
-                  style={{ backgroundImage: displayProfile.bannerURL ? `url(${displayProfile.bannerURL})` : undefined }}
-                >
-                  {displayProfile.uid === profile.uid && (
-                    <button 
-                      onClick={() => setShowSettings(true)}
-                      className="absolute top-1.5 right-1.5 bg-black/60 px-2 py-0.5 rounded text-[8px] font-bold backdrop-blur-sm hover:bg-black/80 transition animate-pulse"
-                    >
-                      Edit Profile
-                    </button>
-                  )}
-                </div>
-                <div className="px-3 flex flex-col items-center -mt-8 relative z-10">
-                  <div className="w-16 h-16 rounded-full border-4 border-[#0E1013] bg-neutral-800 overflow-hidden shadow-md">
-                    <img referrerPolicy="no-referrer" src={displayProfile.photoURL} alt="Avatar" className="w-full h-full object-cover" />
-                  </div>
-                  <h3 className="font-bold text-sm text-white mt-1.5 line-clamp-1">{displayProfile.displayName}</h3>
-                  <p className="text-[10px] text-neutral-500 font-mono">@{displayProfile.username}</p>
-                  
-                  <div className="flex gap-2 w-full mt-3 pt-3 border-t border-neutral-800/60 text-center">
-                    <div className="flex-1">
-                      <p className="text-xs font-black text-white">1.2k</p>
-                      <p className="text-[8px] text-neutral-500 uppercase tracking-widest font-mono">Friends</p>
-                    </div>
-                    <div className="flex-1 border-l border-neutral-800/60">
-                      <p className="text-xs font-black text-white">24</p>
-                      <p className="text-[8px] text-neutral-500 uppercase tracking-widest font-mono">Games</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Mini Games Section */}
-          <div className="flex-1 overflow-y-auto p-5 custom-scrollbar flex flex-col">
-            <div className="flex justify-between items-center mb-3">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 font-mono">20 Mini Games</h4>
-              <button 
-                onClick={() => { setInitialLaunchGameId(null); setShowGames(true); }}
-                className="text-[9px] text-blue-500 hover:text-blue-400 font-bold tracking-wider font-mono uppercase"
-              >
-                See All
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              <button 
-                onClick={() => { setInitialLaunchGameId('chess'); setShowGames(true); }}
-                className="bg-neutral-900/40 p-2.5 rounded-xl border border-neutral-800/60 flex flex-col items-center gap-1.5 hover:border-blue-500/60 hover:bg-neutral-900/80 cursor-pointer text-center group transition-all"
-              >
-                <span className="text-xl group-hover:scale-110 transition duration-150">♟️</span>
-                <span className="text-[9px] font-bold text-slate-300">Space Chess</span>
-              </button>
-              <button 
-                onClick={() => { setInitialLaunchGameId('flappy'); setShowGames(true); }}
-                className="bg-neutral-900/40 p-2.5 rounded-xl border border-neutral-800/60 flex flex-col items-center gap-1.5 hover:border-blue-500/60 hover:bg-neutral-900/80 cursor-pointer text-center group transition-all"
-              >
-                <span className="text-xl group-hover:scale-110 transition duration-150">🎮</span>
-                <span className="text-[9px] font-bold text-slate-300">Pixel Run</span>
-              </button>
-              <button 
-                onClick={() => { setInitialLaunchGameId('minesweeper'); setShowGames(true); }}
-                className="bg-neutral-900/40 p-2.5 rounded-xl border border-neutral-800/60 flex flex-col items-center gap-1.5 hover:border-blue-500/60 hover:bg-neutral-900/80 cursor-pointer text-center group transition-all"
-              >
-                <span className="text-xl group-hover:scale-110 transition duration-150">🧩</span>
-                <span className="text-[9px] font-bold text-slate-300">Logic Gate</span>
-              </button>
-              <button 
-                onClick={() => { setInitialLaunchGameId('connect4'); setShowGames(true); }}
-                className="bg-neutral-900/40 p-2.5 rounded-xl border border-neutral-800/60 flex flex-col items-center gap-1.5 hover:border-blue-500/60 hover:bg-neutral-900/80 cursor-pointer text-center group transition-all"
-              >
-                <span className="text-xl group-hover:scale-110 transition duration-150">🃏</span>
-                <span className="text-[9px] font-bold text-slate-300">Konnect 4</span>
-              </button>
-            </div>
-            
-            {/* Quick QR Display at bottom of Games list */}
-            <div className="mt-auto pt-4 border-t border-neutral-800/60 flex flex-col items-center">
-              <div className="bg-white p-2 rounded-xl flex items-center justify-center mb-1.5 shadow-md">
-                <div className="w-20 h-20 bg-[#0A0B0D] p-1.5">
-                  <div className="grid grid-cols-4 grid-rows-4 gap-1 w-full h-full">
-                    <div className="bg-white"></div><div className="bg-black"></div><div className="bg-white"></div><div className="bg-black"></div>
-                    <div className="bg-black"></div><div className="bg-white"></div><div className="bg-black"></div><div className="bg-white"></div>
-                    <div className="bg-white"></div><div className="bg-black"></div><div className="bg-white"></div><div className="bg-black"></div>
-                    <div className="bg-black"></div><div className="bg-white"></div><div className="bg-black"></div><div className="bg-white"></div>
-                  </div>
-                </div>
-              </div>
-              <p className="text-[8px] text-neutral-600 font-bold uppercase tracking-wider font-mono">Scan QR to Konnect</p>
-            </div>
-          </div>
         </div>
 
         {/* OVERLAY MODAL: STORIES PANEL */}

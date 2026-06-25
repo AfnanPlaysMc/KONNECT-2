@@ -32,11 +32,69 @@ export default function Sidebar({
   const [addMessage, setAddMessage] = useState('');
   const [addError, setAddError] = useState('');
   const [loadingAdd, setLoadingAdd] = useState(false);
+  const [searchedUser, setSearchedUser] = useState<UserProfile | null>(null);
+  const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
 
   // QR Modal
   const [showQR, setShowQR] = useState(false);
   const [qrCodeInput, setQrCodeInput] = useState('');
   const [qrMessage, setQrMessage] = useState('');
+
+  // Read incoming friend requests
+  useEffect(() => {
+    const q = query(
+      collection(db, 'friendRequests'),
+      where('toUid', '==', profile.uid),
+      where('status', '==', 'pending')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((doc) => {
+        list.push({ ...doc.data(), id: doc.id });
+      });
+      setIncomingRequests(list);
+    });
+    return () => unsubscribe();
+  }, [profile.uid]);
+
+  const handleAcceptRequest = async (req: any) => {
+    try {
+      await updateDoc(doc(db, 'friendRequests', req.id), { status: 'accepted' });
+      
+      const chatRef = doc(collection(db, 'chats'));
+      await setDoc(chatRef, {
+        participants: [req.fromUid, profile.uid],
+        lastMessage: {
+          text: `Established friendship with @${req.fromUsername}`,
+          timestamp: new Date(),
+          senderId: req.fromUid
+        },
+        unreadCount: {
+          [req.fromUid]: 0,
+          [profile.uid]: 0
+        }
+      });
+
+      await addDoc(collection(db, 'chats', chatRef.id, 'messages'), {
+        senderId: req.fromUid,
+        receiverId: profile.uid,
+        text: `Hey there! Let's Konnect.`,
+        timestamp: new Date(),
+        type: 'text',
+        read: false
+      });
+    } catch (e) {
+      console.error('Error accepting friend request:', e);
+    }
+  };
+
+  const handleDenyRequest = async (req: any) => {
+    try {
+      await updateDoc(doc(db, 'friendRequests', req.id), { status: 'denied' });
+    } catch (e) {
+      console.error('Error denying friend request:', e);
+    }
+  };
 
   // Read active chats in real-time
   useEffect(() => {
@@ -95,10 +153,11 @@ export default function Sidebar({
     return () => unsubscribe();
   }, [profile]);
 
-  const handleAddFriend = async (e: React.FormEvent) => {
+  const handleSearchUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddError('');
     setAddMessage('');
+    setSearchedUser(null);
     setLoadingAdd(true);
 
     const targetUsername = friendUsername.trim().toLowerCase().replace('@', '');
@@ -109,7 +168,6 @@ export default function Sidebar({
     }
 
     try {
-      // Find user by username
       const q = query(collection(db, 'profiles'), where('username', '==', targetUsername));
       const qSnap = await getDocs(q);
       
@@ -124,13 +182,25 @@ export default function Sidebar({
 
       if (!targetUser) throw new Error('Failed to resolve user.');
 
-      // Check if they blocked us
-      if (targetUser.blockedUsers?.includes(profile.uid)) {
+      if (targetUser.blockedUsers?.includes(profile.uid) || profile.blockedUsers?.includes(targetUser.uid)) {
         throw new Error('This user cannot be added as a friend.');
       }
 
-      const tUser = targetUser as UserProfile;
+      setSearchedUser(targetUser);
+    } catch (err: any) {
+      setAddError(err.message || 'Failed to search user');
+    } finally {
+      setLoadingAdd(false);
+    }
+  };
 
+  const sendFriendRequest = async () => {
+    if (!searchedUser) return;
+    setLoadingAdd(true);
+    setAddError('');
+    setAddMessage('');
+
+    try {
       // Check if chat already exists
       const existingChatQuery = query(
         collection(db, 'chats'),
@@ -138,54 +208,35 @@ export default function Sidebar({
       );
       const chatsSnap = await getDocs(existingChatQuery);
       let chatExists = false;
-      let existingChatId = '';
-
       chatsSnap.forEach((doc) => {
         const data = doc.data();
-        if (data.participants.includes(tUser.uid)) {
+        if (data.participants.includes(searchedUser.uid)) {
           chatExists = true;
-          existingChatId = doc.id;
         }
       });
 
       if (chatExists) {
-        setAddMessage('Friendship already established! Chat loaded.');
-        onSelectChat(existingChatId, tUser);
-        setTimeout(() => setShowAddFriend(false), 1500);
-        return;
+        throw new Error('You are already friends with this user!');
       }
 
-      // Create new chat
-      const chatRef = doc(collection(db, 'chats'));
-      await setDoc(chatRef, {
-        participants: [profile.uid, tUser.uid],
-        lastMessage: {
-          text: `Established friendship with @${profile.username}`,
-          timestamp: new Date(),
-          senderId: profile.uid
-        },
-        unreadCount: {
-          [profile.uid]: 0,
-          [tUser.uid]: 0
-        }
+      const requestRef = doc(db, 'friendRequests', `${profile.uid}_${searchedUser.uid}`);
+      await setDoc(requestRef, {
+        id: `${profile.uid}_${searchedUser.uid}`,
+        fromUid: profile.uid,
+        fromUsername: profile.username,
+        fromDisplayName: profile.displayName,
+        fromPhotoURL: profile.photoURL,
+        toUid: searchedUser.uid,
+        status: 'pending',
+        timestamp: new Date()
       });
 
-      // Add a greeting message inside the chat
-      await addDoc(collection(db, 'chats', chatRef.id, 'messages'), {
-        senderId: profile.uid,
-        receiverId: tUser.uid,
-        text: `Hey there! Let's Konnect.`,
-        timestamp: new Date(),
-        type: 'text',
-        read: false
-      });
-
-      setAddMessage(`Friend @${tUser.username} added successfully!`);
-      onSelectChat(chatRef.id, tUser);
+      setAddMessage(`Friend request sent to @${searchedUser.username}!`);
+      setSearchedUser(null);
       setFriendUsername('');
-      setTimeout(() => setShowAddFriend(false), 1500);
+      setTimeout(() => setShowAddFriend(false), 2000);
     } catch (err: any) {
-      setAddError(err.message || 'Failed to add friend');
+      setAddError(err.message || 'Failed to send friend request');
     } finally {
       setLoadingAdd(false);
     }
@@ -224,7 +275,7 @@ export default function Sidebar({
   );
 
   return (
-    <div className="w-80 border-r border-neutral-800 bg-[#0E1013] flex flex-col h-full text-slate-100 select-none flex-shrink-0">
+    <div className={`w-full sm:w-80 border-r border-neutral-800 bg-[#0E1013] flex flex-col h-full text-slate-100 select-none flex-shrink-0 ${activeChatId ? 'hidden sm:flex' : 'flex'}`}>
       
       {/* USER PROFILE CARD HEADER */}
       <div className="p-4 border-b border-neutral-800 bg-neutral-900/10 flex items-center justify-between">
@@ -258,21 +309,13 @@ export default function Sidebar({
       </div>
 
       {/* QUICK LAUNCH TOOLS */}
-      <div className="p-3 border-b border-slate-900 bg-slate-950/20 grid grid-cols-3 gap-2">
+      <div className="p-3 border-b border-slate-900 bg-slate-950/20 grid grid-cols-2 gap-2">
         <button 
           onClick={onOpenStories}
           className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-slate-900/30 border border-slate-900 hover:border-slate-800 hover:bg-slate-900/50 transition group"
         >
           <Film className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition" />
           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Stories</span>
-        </button>
-
-        <button 
-          onClick={onOpenGames}
-          className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-slate-900/30 border border-slate-900 hover:border-slate-800 hover:bg-slate-900/50 transition group"
-        >
-          <Gamepad2 className="w-4 h-4 text-fuchsia-400 group-hover:scale-110 transition animate-bounce" />
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Games</span>
         </button>
 
         <button 
@@ -300,6 +343,44 @@ export default function Sidebar({
 
       {/* CHATS LIST */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {/* INCOMING FRIEND REQUESTS */}
+        {incomingRequests.length > 0 && (
+          <div className="px-3 mb-4">
+            <h4 className="px-1 py-1.5 text-[9px] uppercase font-bold tracking-widest text-indigo-400 font-mono flex items-center gap-1.5">
+              <Bell className="w-3.5 h-3.5 text-indigo-400 animate-pulse" /> Friend Requests ({incomingRequests.length})
+            </h4>
+            <div className="space-y-2">
+              {incomingRequests.map((req) => (
+                <div key={req.id} className="p-2.5 bg-indigo-950/20 border border-indigo-900/40 rounded-xl flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <img src={req.fromPhotoURL} alt={req.fromUsername} className="w-8 h-8 rounded-full object-cover border border-indigo-900/30" />
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-200 line-clamp-1">{req.fromDisplayName}</p>
+                      <p className="text-[9px] text-slate-400 font-mono">@{req.fromUsername}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => handleAcceptRequest(req)}
+                      className="p-1 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white transition active:scale-95"
+                      title="Accept Request"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button 
+                      onClick={() => handleDenyRequest(req)}
+                      className="p-1 bg-rose-600 hover:bg-rose-500 rounded-lg text-white transition active:scale-95"
+                      title="Deny Request"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <h4 className="px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest text-slate-500 font-mono">Conversations</h4>
         
         {filteredChats.length === 0 ? (
@@ -366,10 +447,20 @@ export default function Sidebar({
       {/* MODAL: ADD FRIEND via Username */}
       {showAddFriend && (
         <div className="absolute inset-0 z-50 bg-[#07090e]/95 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-xs bg-[#0c1017] border border-slate-800 rounded-2xl p-5 shadow-2xl">
+          <div className="w-full max-w-xs bg-[#0c1017] border border-slate-800 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
             <div className="flex justify-between items-center mb-4">
               <h4 className="font-bold text-xs text-white">Add friend by handle</h4>
-              <button onClick={() => setShowAddFriend(false)} className="p-1 hover:bg-slate-800 rounded-full text-slate-400"><X className="w-4 h-4" /></button>
+              <button 
+                onClick={() => {
+                  setShowAddFriend(false);
+                  setSearchedUser(null);
+                  setAddError('');
+                  setAddMessage('');
+                }} 
+                className="p-1 hover:bg-slate-800 rounded-full text-slate-400"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             {addError && (
@@ -384,30 +475,59 @@ export default function Sidebar({
               </div>
             )}
 
-            <form onSubmit={handleAddFriend} className="space-y-3">
-              <div>
-                <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1">Handle username</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2 text-slate-500 text-xs font-mono">@</span>
-                  <input 
-                    type="text" 
-                    required
-                    value={friendUsername}
-                    onChange={e => setFriendUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                    placeholder="john_doe"
-                    className="w-full pl-6 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+            {!searchedUser ? (
+              <form onSubmit={handleSearchUser} className="space-y-3">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-500 mb-1">Handle username</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-slate-500 text-xs font-mono">@</span>
+                    <input 
+                      type="text" 
+                      required
+                      value={friendUsername}
+                      onChange={e => setFriendUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                      placeholder="john_doe"
+                      className="w-full pl-6 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={loadingAdd}
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white rounded-xl shadow transition"
+                >
+                  {loadingAdd ? 'Searching...' : 'Search User'}
+                </button>
+              </form>
+            ) : (
+              <div className="text-center py-4 space-y-4">
+                <div className="flex flex-col items-center gap-3">
+                  <img 
+                    src={searchedUser.photoURL} 
+                    alt={searchedUser.username} 
+                    className="w-20 h-20 rounded-full object-cover border-2 border-indigo-500/30 shadow-lg" 
                   />
+                  <p className="text-xs font-mono text-slate-300 font-bold">@{searchedUser.username}</p>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={() => setSearchedUser(null)}
+                    className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-semibold text-slate-400"
+                  >
+                    Back
+                  </button>
+                  <button 
+                    onClick={sendFriendRequest}
+                    disabled={loadingAdd}
+                    className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white rounded-xl shadow transition"
+                  >
+                    {loadingAdd ? 'Sending...' : 'Add Friend'}
+                  </button>
                 </div>
               </div>
-
-              <button 
-                type="submit" 
-                disabled={loadingAdd}
-                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white rounded-xl shadow transition"
-              >
-                {loadingAdd ? 'Initiating contact...' : 'Form Friendship'}
-              </button>
-            </form>
+            )}
           </div>
         </div>
       )}

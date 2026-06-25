@@ -24,5 +24,10 @@ service cloud.firestore {
     match /stories/{storyId} {
       allow read, write: if isAuthenticated();
     }
+
+    // FriendRequests collection rules
+    match /friendRequests/{requestId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Shield, Palette, Volume2, User, EyeOff, Check, Ban, AlertCircle, 
-  Upload, Sparkles, UserCheck, Smartphone, Eye
+  Upload, Sparkles, UserCheck, Smartphone, Eye, LogOut
 } from 'lucide-react';
+import { signOut } from 'firebase/auth';
+import { auth } from '../firebase';
 import { doc, updateDoc, getDocs, collection, query, where, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile, THEMES, NOTIFICATION_SOUNDS } from '../types';
@@ -324,8 +326,23 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
             </button>
           </div>
 
-          <div className="text-[9px] text-slate-500 font-mono text-center">
-            Konnect v2.4.0<br/>By Oxa LLC
+          <div className="space-y-3">
+            <button 
+              onClick={() => {
+                if (window.confirm('Are you sure you want to log out?')) {
+                  signOut(auth);
+                  window.location.reload();
+                }
+              }}
+              type="button"
+              className="w-full py-2.5 bg-rose-950/20 hover:bg-rose-600 border border-rose-900/40 text-rose-400 hover:text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition active:scale-95"
+            >
+              <LogOut className="w-3.5 h-3.5" /> Log Out
+            </button>
+
+            <div className="text-[9px] text-slate-500 font-mono text-center">
+              Konnect v2.4.0<br/>By Oxa LLC
+            </div>
           </div>
         </div>
 

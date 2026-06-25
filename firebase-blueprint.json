@@ -139,6 +139,35 @@
         }
       },
       "required": ["id", "userId", "mediaUrl", "type"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Friend request sent from one user to another",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fromUid": {
+          "type": "string"
+        },
+        "fromUsername": {
+          "type": "string"
+        },
+        "fromDisplayName": {
+          "type": "string"
+        },
+        "fromPhotoURL": {
+          "type": "string"
+        },
+        "toUid": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "fromUid", "toUid", "status"]
     }
   },
   "firestore": {
@@ -157,6 +186,10 @@
     "/stories/{storyId}": {
       "schema": "Story",
       "description": "Stories shared by users"
+    },
+    "/friendRequests/{requestId}": {
+      "schema": "FriendRequest",
+      "description": "Friend requests shared by users"
     }
   }
 }
