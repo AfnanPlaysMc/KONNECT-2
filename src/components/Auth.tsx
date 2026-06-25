@@ -17,17 +17,11 @@ interface AuthProps {
 
 export default function Auth({ onAuthSuccess }: AuthProps) {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [authMethod, setAuthMethod] = useState<'email' | 'phone' | 'google'>('email');
-  
-  // Email fields
+  const [emailOrPhone, setEmailOrPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  
-  // Phone fields
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [phoneStep, setPhoneStep] = useState<1 | 2>(1);
   
   // Profile onboarding fields
   const [onboarding, setOnboarding] = useState(false);
@@ -58,27 +52,58 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     'https://images.unsplash.com/photo-1557683316-973673baf926?w=800'
   ];
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  const handleUnifiedAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
       if (isSignUp) {
         if (!email || !password || !displayName) {
-          throw new Error('Please fill all fields');
+          throw new Error('Please fill all required fields');
         }
+        
+        // If a phone number is provided, check if it's already registered in Firestore profiles
+        const cleanPhone = phoneNumber.trim();
+        if (cleanPhone) {
+          const q = query(collection(db, 'profiles'), where('phoneNumber', '==', cleanPhone));
+          const querySnap = await getDocs(q);
+          if (!querySnap.empty) {
+            throw new Error('This phone number is already registered to another account.');
+          }
+        }
+
         const userCred = await createUserWithEmailAndPassword(auth, email, password);
         // Put in onboarding phase to choose username
-        setTempProfile({ uid: userCred.user.uid, email: userCred.user.email || '' });
+        setTempProfile({ uid: userCred.user.uid, email: userCred.user.email || '', phoneNumber: cleanPhone });
         setProfileName(displayName);
         // Pre-fill username based on display name
         setUsername(displayName.toLowerCase().replace(/[^a-z0-9]/g, ''));
         setOnboarding(true);
       } else {
-        if (!email || !password) {
-          throw new Error('Please enter email and password');
+        if (!emailOrPhone || !password) {
+          throw new Error('Please enter email or phone number and password');
         }
-        const userCred = await signInWithEmailAndPassword(auth, email, password);
+        
+        let targetEmail = emailOrPhone.trim();
+        
+        // If the identifier is not an email (does not contain '@'), treat it as a phone number
+        if (!targetEmail.includes('@')) {
+          const q = query(collection(db, 'profiles'), where('phoneNumber', '==', targetEmail));
+          const querySnap = await getDocs(q);
+          if (querySnap.empty) {
+            throw new Error('No account found with this phone number. Please sign up or use your email.');
+          }
+          let foundEmail: string | undefined;
+          querySnap.forEach((doc) => {
+            foundEmail = doc.data().email;
+          });
+          if (!foundEmail) {
+            throw new Error('Could not find associated email address for this phone number.');
+          }
+          targetEmail = foundEmail;
+        }
+
+        const userCred = await signInWithEmailAndPassword(auth, targetEmail, password);
         await checkUserProfile(userCred.user.uid);
       }
     } catch (err: any) {
@@ -112,69 +137,11 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     setError('');
     setLoading(true);
     try {
-      // Direct sign-in attempt
       const result = await signInWithPopup(auth, googleProvider);
       await checkUserProfile(result.user.uid);
     } catch (err: any) {
-      console.warn('Popup blocked or failed, offering standard fallback options.', err);
-      setError('Google Sign-In popup could not complete. Providing quick bypass option for development / iframe testing.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Immediate developer/preview test login option (bypass iframe popup restriction block safely)
-  const handleIframeBypassAuth = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      // We can generate or login to a beautiful tester account using a stable custom test login
-      // e.g. tester@konnect.com, which is brilliant for iframe previewers!
-      const testEmail = `tester_${Math.floor(Math.random() * 1000)}@konnect.com`;
-      const testPass = 'konnect123';
-      
-      // Let's sign up or sign in a tester
-      let userCred;
-      try {
-        userCred = await signInWithEmailAndPassword(auth, 'admin_tester@konnect.com', 'konnect123');
-      } catch {
-        userCred = await createUserWithEmailAndPassword(auth, 'admin_tester@konnect.com', 'konnect123');
-      }
-      await checkUserProfile(userCred.user.uid);
-    } catch (err: any) {
-      setError('Fallback login failed: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePhoneAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      if (phoneStep === 1) {
-        if (!phoneNumber.trim()) throw new Error('Enter a valid phone number');
-        // Simulated / sandbox Phone Auth for robust iframe compatibility!
-        // Standard SMS sends fail inside nested dev containers without custom captcha domains.
-        // We will mock verify or simulate it with test codes.
-        setPhoneStep(2);
-      } else {
-        if (!otpCode.trim()) throw new Error('Enter the 6-digit confirmation code');
-        
-        // Let's create a simulated test sign-in with phone UID for iframe
-        const cleanPhone = phoneNumber.replace(/[^0-9+]/g, '');
-        const mockUid = 'phone_auth_' + cleanPhone.substring(cleanPhone.length - 8);
-        
-        // Save user details
-        setTempProfile({ uid: mockUid, phoneNumber: cleanPhone });
-        setProfileName('User ' + cleanPhone.substring(cleanPhone.length - 4));
-        setUsername('user_' + cleanPhone.substring(cleanPhone.length - 4));
-        
-        await checkUserProfile(mockUid);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Phone verification failed');
+      console.warn('Google Sign-In failed', err);
+      setError(err.message || 'Google Sign-In failed');
     } finally {
       setLoading(false);
     }
@@ -398,33 +365,11 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           </form>
         ) : (
           /* STANDARD SIGN-IN / SIGN-UP */
-          <div>
-            {/* Tab selection */}
-            <div className="flex bg-slate-900/80 p-1 rounded-xl mb-6">
-              <button 
-                onClick={() => { setAuthMethod('email'); setIsSignUp(false); }}
-                className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition ${authMethod === 'email' ? 'bg-[#0e121a] text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                <Mail className="w-3.5 h-3.5" /> Email
-              </button>
-              <button 
-                onClick={() => { setAuthMethod('phone'); setPhoneStep(1); }}
-                className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition ${authMethod === 'phone' ? 'bg-[#0e121a] text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                <Phone className="w-3.5 h-3.5" /> Phone
-              </button>
-              <button 
-                onClick={() => { setAuthMethod('google'); handleGoogleAuth(); }}
-                className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition ${authMethod === 'google' ? 'bg-[#0e121a] text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                <Shield className="w-3.5 h-3.5" /> Google
-              </button>
-            </div>
-
-            {/* EMAIL METHOD */}
-            {authMethod === 'email' && (
-              <form onSubmit={handleEmailAuth} className="space-y-4">
-                {isSignUp && (
+          <div className="space-y-6">
+            <form onSubmit={handleUnifiedAuth} className="space-y-4">
+              {isSignUp ? (
+                /* SIGN UP FORM */
+                <>
                   <div>
                     <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Full Name</label>
                     <div className="relative">
@@ -435,147 +380,109 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
                         placeholder="John Doe"
-                        className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                        className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                       />
                     </div>
                   </div>
-                )}
 
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Email Address</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Secret Password</label>
-                  <div className="relative">
-                    <Key className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
-                    <input
-                      type="password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/10 active:scale-[0.98] transition-all disabled:opacity-50"
-                >
-                  {loading ? 'Authenticating...' : isSignUp ? 'Create Premium Account' : 'Sign In securely'}
-                </button>
-
-                <div className="text-center mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setIsSignUp(!isSignUp)}
-                    className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
-                  >
-                    {isSignUp ? 'Already registered? Login here' : 'New to Konnect? Create an account'}
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* PHONE METHOD */}
-            {authMethod === 'phone' && (
-              <form onSubmit={handlePhoneAuthSubmit} className="space-y-4">
-                {phoneStep === 1 ? (
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Mobile Number</label>
+                    <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Email Address</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Phone Number (Optional)</label>
                     <div className="relative">
                       <Phone className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
                       <input
                         type="tel"
-                        required
                         value={phoneNumber}
                         onChange={(e) => setPhoneNumber(e.target.value)}
-                        placeholder="+1 (555) 019-2834"
-                        className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                        placeholder="+15550192834"
+                        className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                       />
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-2">
-                      Enter full mobile number including your country code. Note: SMS is simulated to bypass container/sandbox domain limitations.
-                    </p>
                   </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">6-Digit Verification OTP</label>
+                </>
+              ) : (
+                /* SIGN IN FORM */
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Email or Phone Number</label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
                     <input
                       type="text"
-                      maxLength={6}
                       required
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
-                      placeholder="123456"
-                      className="w-full text-center tracking-[1em] py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-lg font-mono text-white focus:outline-none focus:border-indigo-500 transition-all"
+                      value={emailOrPhone}
+                      onChange={(e) => setEmailOrPhone(e.target.value)}
+                      placeholder="you@example.com or +15550192834"
+                      className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                     />
-                    <div className="flex justify-between items-center mt-2">
-                      <p className="text-[10px] text-slate-500">OTP code is simulated. Enter any digits to test!</p>
-                      <button type="button" onClick={() => setPhoneStep(1)} className="text-xs text-indigo-400 font-medium hover:underline">Change number</button>
-                    </div>
                   </div>
-                )}
+                </div>
+              )}
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold active:scale-[0.98] transition-all"
-                >
-                  {phoneStep === 1 ? 'Send Verification OTP' : 'Complete Verification'}
-                </button>
-              </form>
-            )}
+              <div>
+                <label className="block text-xs text-slate-400 mb-1.5 font-medium uppercase tracking-wider">Secret Password</label>
+                <div className="relative">
+                  <Key className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-900/60 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                  />
+                </div>
+              </div>
 
-            {/* GOOGLE AND FALLBACK MOCK OPTIONS */}
-            {authMethod === 'google' && (
-              <div className="space-y-4 py-4 text-center">
-                <p className="text-sm text-slate-400">
-                  Google Account secure verification. Direct iframe logins can sometimes be blocked by sandbox iframe restrictions.
-                </p>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 mt-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-blue-600/10 active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                {loading ? 'Authenticating...' : isSignUp ? 'Create Premium Account' : 'Sign In Securely'}
+              </button>
+
+              <div className="text-center mt-4">
                 <button
                   type="button"
-                  onClick={handleGoogleAuth}
-                  className="w-full py-3 bg-white hover:bg-slate-100 text-slate-900 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+                  onClick={() => setIsSignUp(!isSignUp)}
+                  className="text-xs text-blue-400 hover:text-blue-300 font-medium transition"
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
-                    <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.47 14.97 1 12 1 7.35 1 3.39 3.65 1.5 7.5l3.8 2.95C6.2 7.37 8.9 5.04 12 5.04z"/>
-                    <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.47h6.44c-.28 1.47-1.11 2.72-2.36 3.56l3.66 2.84c2.14-1.97 3.38-4.87 3.38-8.51z"/>
-                    <path fill="#FBBC05" d="M5.3 14.95c-.24-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29L1.5 7.42C.54 9.34 0 11.48 0 13.73s.54 4.39 1.5 6.31l3.8-3.09z"/>
-                    <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.92l-3.66-2.84c-1.01.68-2.3 1.08-4.3 1.08-3.1 0-5.8-2.33-6.7-5.41L1.5 15.96C3.39 19.81 7.35 23 12 23z"/>
-                  </svg>
-                  Connect with Google Account
+                  {isSignUp ? 'Already registered? Login here' : 'New to Konnect? Create an account'}
                 </button>
               </div>
-            )}
+            </form>
 
-            {/* INSTANT IFRAME BYPASS OPTION */}
             <div className="relative my-6 text-center">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800"></div></div>
-              <span className="relative px-3 text-[10px] uppercase text-slate-500 bg-[#0e121a]">Convenient Iframe Testing</span>
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-neutral-800"></div></div>
+              <span className="relative px-3 text-[10px] uppercase text-neutral-500 bg-[#0e121a]">or</span>
             </div>
 
             <button
               type="button"
-              onClick={handleIframeBypassAuth}
-              className="w-full py-2.5 bg-gradient-to-r from-[#111827] to-[#1f2937] hover:from-[#1f2937] hover:to-[#374151] border border-slate-800/80 rounded-xl text-xs font-semibold text-slate-300 flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all"
+              onClick={handleGoogleAuth}
+              className="w-full py-3 bg-[#161920] hover:bg-[#20242e] border border-neutral-800 text-[#E4E6EB] rounded-xl text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
             >
-              <Flame className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-              Demo Direct Entry (Skip Popups/Captchas)
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.47 14.97 1 12 1 7.35 1 3.39 3.65 1.5 7.5l3.8 2.95C6.2 7.37 8.9 5.04 12 5.04z"/>
+                <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.47h6.44c-.28 1.47-1.11 2.72-2.36 3.56l3.66 2.84c2.14-1.97 3.38-4.87 3.38-8.51z"/>
+                <path fill="#FBBC05" d="M5.3 14.95c-.24-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29L1.5 7.42C.54 9.34 0 11.48 0 13.73s.54 4.39 1.5 6.31l3.8-3.09z"/>
+                <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.92l-3.66-2.84c-1.01.68-2.3 1.08-4.3 1.08-3.1 0-5.8-2.33-6.7-5.41L1.5 15.96C3.39 19.81 7.35 23 12 23z"/>
+              </svg>
+              Continue with Google
             </button>
           </div>
         )}

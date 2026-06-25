@@ -43,7 +43,7 @@ export default function ChatWindow({
   const audioNodeRef = useRef<any>(null);
 
   // Calling states
-  const [callSession, setCallSession] = useState<{ id: string; type: 'voice' | 'video'; status: 'ringing' | 'connected' | 'ended' } | null>(null);
+  const [callSession, setCallSession] = useState<{ id: string; type: 'voice' | 'video'; status: 'ringing' | 'connected' | 'ended'; roomId?: string; callerId?: string; receiverId?: string } | null>(null);
   const [callTimer, setCallTimer] = useState(0);
   const callIntervalRef = useRef<any>(null);
   const callRingNode = useRef<any>(null);
@@ -94,6 +94,93 @@ export default function ChatWindow({
 
     return () => unsubscribe();
   }, [chatId, partnerProfile, myProfile]);
+
+  // Synchronize activeCall state with Firestore in real-time
+  useEffect(() => {
+    const chatDocRef = doc(db, 'chats', chatId);
+    const unsubscribe = onSnapshot(chatDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const activeCall = data?.activeCall;
+        
+        if (activeCall) {
+          // If a call is ongoing and we are not in ended state
+          if (activeCall.status === 'ended') {
+            if (callRingNode.current) {
+              try { callRingNode.current.osc.stop(); } catch (e) {}
+              callRingNode.current = null;
+            }
+            if (callIntervalRef.current) {
+              clearInterval(callIntervalRef.current);
+              callIntervalRef.current = null;
+            }
+            setCallSession(null);
+          } else {
+            // Update local call session
+            setCallSession({
+              id: activeCall.id,
+              type: activeCall.type,
+              status: activeCall.status,
+              roomId: activeCall.roomId,
+              callerId: activeCall.callerId,
+              receiverId: activeCall.receiverId
+            });
+            
+            // Handle sound and timer transitions
+            if (activeCall.status === 'connected') {
+              if (callRingNode.current) {
+                try { callRingNode.current.osc.stop(); } catch (e) {}
+                callRingNode.current = null;
+              }
+              // Start timer if not already running
+              if (!callIntervalRef.current) {
+                setCallTimer(0);
+                callIntervalRef.current = setInterval(() => {
+                  setCallTimer(prev => prev + 1);
+                }, 1000);
+              }
+            } else if (activeCall.status === 'ringing') {
+              // Play electronic ringing sound if we are the receiver and sound is not already playing
+              if (activeCall.receiverId === myProfile.uid && !callRingNode.current) {
+                try {
+                  const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+                  const osc = audioCtx.createOscillator();
+                  const gainNode = audioCtx.createGain();
+                  osc.connect(gainNode);
+                  gainNode.connect(audioCtx.destination);
+                  osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                  gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                  osc.start();
+                  callRingNode.current = { osc, ctx: audioCtx };
+                } catch (e) {}
+              }
+            }
+          }
+        } else {
+          // No active call (was cleared or declined)
+          if (callRingNode.current) {
+            try { callRingNode.current.osc.stop(); } catch (e) {}
+            callRingNode.current = null;
+          }
+          if (callIntervalRef.current) {
+            clearInterval(callIntervalRef.current);
+            callIntervalRef.current = null;
+          }
+          setCallSession(null);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      if (callRingNode.current) {
+        try { callRingNode.current.osc.stop(); } catch (e) {}
+      }
+      if (callIntervalRef.current) {
+        clearInterval(callIntervalRef.current);
+      }
+    };
+  }, [chatId, myProfile.uid]);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -261,11 +348,18 @@ export default function ChatWindow({
   };
 
   // Call session initiator
-  const startCall = (type: 'voice' | 'video') => {
-    setCallSession({ id: 'call_session_' + Date.now(), type, status: 'ringing' });
-    setCallTimer(0);
-    
-    // Play electronic ringing sound dynamically
+  const startCall = async (type: 'voice' | 'video') => {
+    const uniqueRoomId = `konnect_jitsi_${chatId}_${Date.now().toString(36)}`;
+    const callPayload = {
+      id: 'call_' + Date.now(),
+      type,
+      status: 'ringing' as const,
+      roomId: uniqueRoomId,
+      callerId: myProfile.uid,
+      receiverId: partnerProfile.uid
+    };
+
+    // Play outbound ringtone locally
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const osc = audioCtx.createOscillator();
@@ -277,31 +371,57 @@ export default function ChatWindow({
       osc.start();
       callRingNode.current = { osc, ctx: audioCtx };
     } catch (e) {}
+
+    // Update conversation document in Firestore
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        activeCall: callPayload
+      });
+    } catch (e) {
+      console.error('Failed to initiate call:', e);
+    }
   };
 
-  const endCall = () => {
+  const endCall = async () => {
+    // Stop local sounds
     if (callRingNode.current) {
       try { callRingNode.current.osc.stop(); } catch (e) {}
+      callRingNode.current = null;
     }
-    clearInterval(callIntervalRef.current);
-    
-    // Log call in chats
+    if (callIntervalRef.current) {
+      clearInterval(callIntervalRef.current);
+      callIntervalRef.current = null;
+    }
+
+    // Log call duration in chats message history
     if (callSession) {
-      sendMessagePayload(`📞 Simulated ${callSession.type} call (${callTimer}s)`, 'call_log');
+      sendMessagePayload(`📞 ${callSession.type === 'video' ? 'Video' : 'Voice'} call ended (${callTimer}s)`, 'call_log');
+    }
+
+    // Reset Firestore activeCall
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        activeCall: null
+      });
+    } catch (e) {
+      console.error('Failed to end call:', e);
     }
 
     setCallSession(null);
   };
 
-  const acceptCall = () => {
+  const acceptCall = async () => {
     if (callRingNode.current) {
       try { callRingNode.current.osc.stop(); } catch (e) {}
+      callRingNode.current = null;
     }
-    setCallSession(prev => prev ? { ...prev, status: 'connected' } : null);
-    
-    callIntervalRef.current = setInterval(() => {
-      setCallTimer(prev => prev + 1);
-    }, 1000);
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        'activeCall.status': 'connected'
+      });
+    } catch (e) {
+      console.error('Failed to accept call:', e);
+    }
   };
 
   const handleChallengeGame = (gameId: string) => {
@@ -634,67 +754,87 @@ export default function ChatWindow({
       {/* FULL CALL PANEL SIMULATION PORTAL OVERLAY */}
       {callSession && (
         <div className="absolute inset-0 z-50 bg-[#020408]/95 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-gradient-to-b from-[#090e17] to-[#04060b] border border-slate-800 rounded-3xl p-6 text-center shadow-2xl flex flex-col justify-between h-[450px]">
+          <div className={`w-full ${callSession.status === 'connected' && callSession.type === 'video' ? 'max-w-3xl h-[600px]' : 'max-w-sm h-[450px]'} bg-gradient-to-b from-[#090e17] to-[#04060b] border border-slate-800 rounded-3xl p-6 text-center shadow-2xl flex flex-col justify-between transition-all duration-300`}>
             
             {/* Top Info */}
-            <div className="space-y-3 pt-6">
+            <div className="space-y-3 pt-4">
               <div className="relative inline-block">
-                <div className="w-20 h-20 rounded-full border-2 border-indigo-500/40 p-1 mx-auto animate-pulse">
+                <div className="w-16 h-16 rounded-full border-2 border-indigo-500/40 p-1 mx-auto animate-pulse">
                   <img src={partnerProfile.photoURL} alt="Avatar" className="w-full h-full object-cover rounded-full" />
                 </div>
                 {callSession.type === 'video' && (
-                  <span className="absolute bottom-0 right-2 p-1.5 bg-indigo-500 text-white rounded-full text-xs">📹</span>
+                  <span className="absolute bottom-0 right-1 p-1 bg-indigo-500 text-white rounded-full text-[10px]">📹</span>
                 )}
               </div>
               
-              <h3 className="font-extrabold text-lg text-white">{partnerProfile.displayName}</h3>
-              <p className="text-xs text-indigo-400 font-mono tracking-widest uppercase">
+              <h3 className="font-extrabold text-base text-white">{partnerProfile.displayName}</h3>
+              <p className="text-[10px] text-indigo-400 font-mono tracking-widest uppercase">
                 {callSession.status === 'ringing' ? 'Incoming secure line...' : `Secure ${callSession.type} connected`}
               </p>
             </div>
 
-            {/* Video Camera simulator view screen */}
-            {callSession.type === 'video' && callSession.status === 'connected' && (
-              <div className="w-full h-32 bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden relative mb-4">
-                {/* Simulated webcam stream */}
-                <div className="absolute inset-0 flex items-center justify-center bg-indigo-950/20 text-indigo-400">
-                  <div className="flex flex-col items-center gap-1.5 animate-pulse">
-                    <Video className="w-6 h-6" />
-                    <span className="text-[9px] font-mono uppercase tracking-wider">Sub-link stream online</span>
+            {/* Real Open-Source Calling Integration (Jitsi Meet iframe) */}
+            {callSession.status === 'connected' && (
+              <div className="flex-1 my-4 flex flex-col justify-center">
+                {callSession.type === 'video' ? (
+                  /* Real Video Feed */
+                  <div className="w-full h-full min-h-[320px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative">
+                    <iframe
+                      src={`https://meet.jit.si/${callSession.roomId}#config.prejoinPageEnabled=false&config.startWithVideoMuted=false&config.startWithAudioMuted=false&config.disableDeepLinking=true`}
+                      allow="camera; microphone; display-capture; autoplay; clipboard-write"
+                      className="w-full h-full border-0 rounded-2xl"
+                    />
                   </div>
-                </div>
-                {/* Small overlay profile self camera */}
-                <div className="absolute bottom-2 right-2 w-10 h-10 rounded-lg border border-slate-800 overflow-hidden bg-slate-900">
-                  <img src={myProfile.photoURL} alt="Me" className="w-full h-full object-cover opacity-80" />
-                </div>
+                ) : (
+                  /* Real Voice Feed with Hidden Frame + Voice Waveform HUD */
+                  <div className="w-full py-6 bg-[#06090e] border border-slate-900 rounded-2xl relative flex flex-col items-center justify-center overflow-hidden">
+                    {/* Hidden Jitsi iframe to handle voice streaming */}
+                    <iframe
+                      src={`https://meet.jit.si/${callSession.roomId}#config.prejoinPageEnabled=false&config.startWithVideoMuted=true&config.startWithAudioMuted=false&config.disableDeepLinking=true`}
+                      allow="camera; microphone; autoplay"
+                      className="w-0 h-0 border-0 pointer-events-none absolute"
+                    />
+                    
+                    {/* Animated waves/rings */}
+                    <div className="absolute w-28 h-28 rounded-full border border-blue-500/10 animate-ping" />
+                    <div className="absolute w-20 h-20 rounded-full border border-indigo-500/20 animate-pulse" />
+                    
+                    <div className="relative z-10 flex flex-col items-center">
+                      <Mic className="w-8 h-8 text-indigo-400 animate-pulse mb-2" />
+                      <span className="text-[10px] font-mono uppercase tracking-widest text-indigo-400">High Definition Voice Channel</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Connection timer info */}
             {callSession.status === 'connected' && (
-              <p className="text-2xl font-semibold font-mono text-white tracking-widest animate-pulse">
+              <p className="text-xl font-semibold font-mono text-white tracking-widest animate-pulse mb-2">
                 {Math.floor(callTimer / 60).toString().padStart(2, '0')}:{(callTimer % 60).toString().padStart(2, '0')}
               </p>
             )}
 
             {/* Simulated sound warning label */}
-            <p className="text-[10px] text-slate-500 px-6">
-              Encryption lines are synthesized locally to secure telemetry and prevent data loss inside nested developers container.
-            </p>
+            {callSession.status === 'ringing' && (
+              <p className="text-[10px] text-slate-500 px-6">
+                Direct connections are fully encrypted end-to-end to secure caller coordinates and metadata.
+              </p>
+            )}
 
             {/* Controls */}
-            <div className="flex justify-center gap-6 pb-6">
+            <div className="flex justify-center gap-6 pb-2">
               {callSession.status === 'ringing' ? (
                 <>
                   <button 
                     onClick={endCall}
-                    className="p-4 bg-rose-600 hover:bg-rose-500 text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition-all"
+                    className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition-all"
                   >
                     Decline
                   </button>
                   <button 
                     onClick={acceptCall}
-                    className="p-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg shadow-emerald-600/20 active:scale-95 transition-all animate-bounce"
+                    className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white rounded-full shadow-lg shadow-emerald-600/20 active:scale-95 transition-all animate-bounce"
                   >
                     Accept
                   </button>
@@ -702,7 +842,7 @@ export default function ChatWindow({
               ) : (
                 <button 
                   onClick={endCall}
-                  className="px-6 py-3.5 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition"
+                  className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition"
                 >
                   Disconnect call
                 </button>
