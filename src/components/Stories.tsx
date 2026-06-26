@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, X, Heart, ChevronLeft, ChevronRight, Image, Type, Send, Eye,
-  Sparkles, Shield, User, Globe
+  Sparkles, Shield, User, Globe, ArrowLeft
 } from 'lucide-react';
 import { 
   collection, addDoc, query, where, getDocs, doc, updateDoc, 
@@ -219,14 +219,27 @@ export default function Stories({ profile, friendIds, onClose }: StoriesProps) {
       
       {/* HEADER */}
       <div className="flex justify-between items-center pb-4 border-b border-slate-900 mb-6">
-        <div className="flex items-center gap-2.5">
-          <span className="p-2 bg-indigo-600 text-white rounded-lg"><Sparkles className="w-5 h-5 animate-pulse" /></span>
-          <div>
-            <h3 className="font-bold text-lg text-white">Konnect Stories</h3>
-            <p className="text-xs text-slate-400">Share snippets that vanish in 24 hours.</p>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={onClose}
+            className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-slate-800 transition active:scale-95"
+            title="Go back to chat"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Chat</span>
+          </button>
+          
+          <div className="w-px h-6 bg-slate-800 hidden sm:block" />
+
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 bg-indigo-600 text-white rounded-lg"><Sparkles className="w-5 h-5 animate-pulse" /></span>
+            <div>
+              <h3 className="font-bold text-lg text-white">Konnect Stories</h3>
+              <p className="text-xs text-slate-400">Share snippets that vanish in 24 hours.</p>
+            </div>
           </div>
         </div>
-        <button onClick={onClose} className="p-2 hover:bg-slate-900 rounded-full text-slate-400 hover:text-white transition">
+        <button onClick={onClose} className="p-2 hover:bg-slate-900 rounded-full text-slate-400 hover:text-white transition" title="Close Stories">
           <X className="w-5 h-5" />
         </button>
       </div>

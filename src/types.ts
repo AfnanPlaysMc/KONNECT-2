@@ -1,5 +1,6 @@
 export interface UserProfile {
   uid: string;
+  isGroup?: boolean;
   displayName: string;
   username: string;
   email?: string;

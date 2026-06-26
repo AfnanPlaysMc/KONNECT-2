@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Play, RotateCcw, Award, Check, AlertCircle, HelpCircle, 
-  ChevronRight, ArrowRight, Smile, Zap, Trash2, ShieldAlert
+  ChevronRight, ArrowRight, Smile, Zap, Trash2, ShieldAlert, ArrowLeft
 } from 'lucide-react';
 import { LIST_OF_GAMES, MiniGame } from '../types';
 
@@ -63,19 +63,34 @@ export default function GamesHub({ onClose, activeFriendId, activeFriendName, on
     <div className="flex flex-col h-full bg-slate-950/40 text-slate-100">
       {/* HEADER */}
       <div className="flex items-center justify-between p-4 border-b border-slate-900 bg-slate-900/40">
-        <div className="flex items-center gap-2.5">
-          <span className="p-2 bg-gradient-to-tr from-indigo-500 to-fuchsia-500 rounded-lg text-white">
-            <Zap className="w-5 h-5" />
-          </span>
-          <div>
-            <h3 className="font-bold text-lg text-white">Konnect Arcade</h3>
-            <p className="text-xs text-slate-400">
-              {activeFriendName ? `Challenging ${activeFriendName}` : 'Play 20 interactive mini-games'}
-            </p>
+        <div className="flex items-center gap-4">
+          {onClose && (
+            <button 
+              onClick={onClose}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-slate-800 transition active:scale-95"
+              title="Go back to chat"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Chat</span>
+            </button>
+          )}
+
+          <div className="w-px h-6 bg-slate-800 hidden sm:block" />
+
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 bg-gradient-to-tr from-indigo-500 to-fuchsia-500 rounded-lg text-white">
+              <Zap className="w-5 h-5" />
+            </span>
+            <div>
+              <h3 className="font-bold text-lg text-white">Konnect Arcade</h3>
+              <p className="text-xs text-slate-400">
+                {activeFriendName ? `Challenging ${activeFriendName}` : 'Play 20 interactive mini-games'}
+              </p>
+            </div>
           </div>
         </div>
         {onClose && (
-          <button onClick={onClose} className="p-2 hover:bg-slate-900 rounded-full text-slate-400 hover:text-white transition">
+          <button onClick={onClose} className="p-2 hover:bg-slate-900 rounded-full text-slate-400 hover:text-white transition" title="Close Arcade">
             <X className="w-5 h-5" />
           </button>
         )}

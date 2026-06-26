@@ -3,7 +3,7 @@ import {
   Phone, Video, MoreVertical, Send, Smile, Play, Pause, RefreshCw, 
   Smile as EmojiIcon, ShieldAlert, BadgeHelp, EyeOff, Film, Ban,
   Volume2, Mic, Check, CheckCheck, Gamepad2, Sparkles, Image, Zap, Flame, User, X,
-  Plus, ArrowLeft, Search
+  Plus, ArrowLeft, Search, PhoneOff, Settings as SettingsIcon, Crown, UserPlus, UserMinus
 } from 'lucide-react';
 import { 
   collection, query, orderBy, onSnapshot, addDoc, updateDoc, 
@@ -13,6 +13,7 @@ import {
 import { db } from '../firebase';
 import { UserProfile, Message, STICKERS, LIST_OF_GAMES } from '../types';
 import { EMOJI_LIST } from '../emojis';
+import { SecureAvatar } from './SecureAvatar';
 
 interface ChatWindowProps {
   chatId: string;
@@ -21,10 +22,12 @@ interface ChatWindowProps {
   onOpenGames: () => void;
   onSetGameChallenge: (gameId: string) => void;
   onCloseChat?: () => void;
+  profilesMap: Record<string, UserProfile>;
+  autoOpenProfile?: boolean;
 }
 
 export default function ChatWindow({ 
-  chatId, myProfile, partnerProfile, onOpenGames, onSetGameChallenge, onCloseChat 
+  chatId, myProfile, partnerProfile, onOpenGames, onSetGameChallenge, onCloseChat, profilesMap, autoOpenProfile 
 }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
@@ -59,6 +62,19 @@ export default function ChatWindow({
   const callRingNode = useRef<any>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Real-time typing status variables
+  const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
+  const isTypingRef = useRef(false);
+  const typingTimeoutRef = useRef<any>(null);
+
+  // Group detailed states
+  const [currentGroupData, setCurrentGroupData] = useState<any>(null);
+  const [isEditingGroup, setIsEditingGroup] = useState(false);
+  const [groupNameInput, setGroupNameInput] = useState('');
+  const [groupPhotoInput, setGroupPhotoInput] = useState('');
+  const [groupDescInput, setGroupDescInput] = useState('');
+  const [selectedNewMember, setSelectedNewMember] = useState('');
 
   // Emojis for quick reactions
   const quickReactions = ['❤️', '👍', '😂', '😮', '😢', '🔥', '🎉'];
@@ -107,12 +123,46 @@ export default function ChatWindow({
     return () => unsubscribe();
   }, [chatId, partnerProfile, myProfile]);
 
-  // Synchronize activeCall state with Firestore in real-time
+  // Handle auto-open drawer based on URL navigation
+  useEffect(() => {
+    if (autoOpenProfile) {
+      setShowPartnerProfileDrawer(true);
+    } else {
+      setShowPartnerProfileDrawer(false);
+    }
+  }, [chatId, autoOpenProfile]);
+
+  // Typing status cleanup when switching chats or closing
+  useEffect(() => {
+    isTypingRef.current = false;
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    return () => {
+      if (chatId) {
+        updateDoc(doc(db, 'chats', chatId), {
+          [`typing.${myProfile.uid}`]: false
+        }).catch(() => {});
+      }
+    };
+  }, [chatId, myProfile.uid]);
+
+  // Synchronize activeCall, typing, and group metadata with Firestore in real-time
   useEffect(() => {
     const chatDocRef = doc(db, 'chats', chatId);
     const unsubscribe = onSnapshot(chatDocRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
+        
+        // Sync typing users
+        const typing = data?.typing || {};
+        setTypingUsers(typing);
+
+        // Sync group details if active chat is a group
+        if (data?.isGroup) {
+          setCurrentGroupData(data);
+        }
+
         const activeCall = data?.activeCall;
         
         if (activeCall) {
@@ -222,12 +272,40 @@ export default function ChatWindow({
     }, 100);
   };
 
+  const updateTypingStatus = async (isTyping: boolean) => {
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        [`typing.${myProfile.uid}`]: isTyping
+      });
+    } catch (err) {}
+  };
+
+  const handleTypingText = (text: string) => {
+    setInputText(text);
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      updateTypingStatus(true);
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      updateTypingStatus(false);
+    }, 2000);
+  };
+
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const cleanText = inputText.trim();
     if (!cleanText) return;
 
     setInputText('');
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    isTypingRef.current = false;
+    updateTypingStatus(false);
     await sendMessagePayload(cleanText, 'text');
   };
 
@@ -460,9 +538,17 @@ export default function ChatWindow({
       callIntervalRef.current = null;
     }
 
-    // Log call duration in chats message history
+    // Log call outcome in message history
     if (callSession) {
-      sendMessagePayload(`📞 ${callSession.type === 'video' ? 'Video' : 'Voice'} call ended (${callTimer}s)`, 'call_log');
+      if (callSession.status === 'ringing') {
+        if (callSession.callerId === myProfile.uid) {
+          sendMessagePayload(`📞 Cancelled ${callSession.type === 'video' ? 'video' : 'voice'} call`, 'call_log');
+        } else {
+          sendMessagePayload(`📞 Declined ${callSession.type === 'video' ? 'video' : 'voice'} call`, 'call_log');
+        }
+      } else {
+        sendMessagePayload(`📞 ${callSession.type === 'video' ? 'Video' : 'Voice'} call ended (${callTimer}s)`, 'call_log');
+      }
     }
 
     // Reset Firestore activeCall
@@ -523,6 +609,87 @@ export default function ChatWindow({
     }
   };
 
+
+      
+  // Pre-populate editing inputs when group details load
+  useEffect(() => {
+    if (currentGroupData) {
+      setGroupNameInput(currentGroupData.groupName || '');
+      setGroupPhotoInput(currentGroupData.groupPhotoURL || '');
+      setGroupDescInput(currentGroupData.groupDescription || '');
+    }
+  }, [currentGroupData, chatId]);
+
+  const handleUpdateGroupDetails = async () => {
+    if (!groupNameInput.trim()) return;
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        groupName: groupNameInput.trim(),
+        groupPhotoURL: groupPhotoInput.trim() || "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=120",
+        groupDescription: groupDescInput.trim() || "Group Chat Space"
+      });
+      setIsEditingGroup(false);
+    } catch (e) {
+      console.error("Error updating group details:", e);
+    }
+  };
+
+  const handleAddGroupMember = async (friendUid: string) => {
+    if (!friendUid) return;
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        participants: arrayUnion(friendUid)
+      });
+      setSelectedNewMember('');
+    } catch (e) {
+      console.error("Error adding group member:", e);
+    }
+  };
+
+  const handleRemoveGroupMember = async (memberUid: string) => {
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        participants: arrayRemove(memberUid),
+        admins: arrayRemove(memberUid)
+      });
+    } catch (e) {
+      console.error("Error removing group member:", e);
+    }
+  };
+
+  const handleToggleAdmin = async (memberUid: string, isCurrentAdmin: boolean) => {
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        admins: isCurrentAdmin ? arrayRemove(memberUid) : arrayUnion(memberUid)
+      });
+    } catch (e) {
+      console.error("Error toggling admin status:", e);
+    }
+  };
+
+  const handleToggleNoAdminMode = async () => {
+    if (!currentGroupData) return;
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        noAdminMode: !currentGroupData.noAdminMode
+      });
+    } catch (e) {
+      console.error("Error toggling no admin mode:", e);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    try {
+      await updateDoc(doc(db, 'chats', chatId), {
+        participants: arrayRemove(myProfile.uid),
+        admins: arrayRemove(myProfile.uid)
+      });
+      if (onCloseChat) onCloseChat();
+    } catch (e) {
+      console.error("Error leaving group:", e);
+    }
+  };
+
   return (
     <div className="flex-1 flex h-full bg-[#0a0d14] relative overflow-hidden">
       
@@ -532,10 +699,10 @@ export default function ChatWindow({
         {/* HEADER SECTION */}
         <div className="p-4 border-b border-slate-900 bg-[#0e121a]/80 backdrop-blur-md flex items-center justify-between z-10">
           <div className="flex items-center gap-2 min-w-0">
-            {/* Back button for mobile */}
+            {/* Back button */}
             <button 
               onClick={onCloseChat}
-              className="p-1.5 mr-1 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition sm:hidden flex items-center justify-center flex-shrink-0"
+              className="p-1.5 mr-1 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center flex-shrink-0"
               title="Back to conversations"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -547,13 +714,19 @@ export default function ChatWindow({
               title="View profile details"
             >
               <div className="relative flex-shrink-0">
-                <img src={partnerProfile.photoURL} alt="Pfp" className="w-10 h-10 rounded-full object-cover border border-slate-800 group-hover:border-indigo-500 transition-all" />
-                <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-[#0e121a] ${partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`} />
+                <SecureAvatar src={partnerProfile.photoURL || ''} alt="Pfp" className="w-10 h-10 rounded-full object-cover border border-slate-800 group-hover:border-indigo-500 transition-all" />
+                {!partnerProfile.isGroup && (
+                  <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-[#0e121a] ${partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`} />
+                )}
               </div>
               <div className="min-w-0">
                 <h4 className="font-bold text-sm text-slate-100 group-hover:text-indigo-400 transition-all truncate">{partnerProfile.displayName}</h4>
                 <p className="text-[10px] text-slate-400 font-medium truncate">
-                  {partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'Active now' : 'Away'} | {partnerProfile.bio || 'Available'}
+                  {partnerProfile.isGroup ? (
+                    <span>Group Space • {currentGroupData?.participants?.length || 0} members</span>
+                  ) : (
+                    <span>{partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'Active now' : 'Away'} • {partnerProfile.bio || 'Available'}</span>
+                  )}
                 </p>
               </div>
             </div>
@@ -569,327 +742,318 @@ export default function ChatWindow({
               <Search className="w-4 h-4" />
             </button>
 
-            <button 
-              onClick={() => startCall('voice')}
-              title="Start voice call"
-              className="p-2 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-indigo-400 transition"
-            >
-              <Phone className="w-4 h-4" />
-            </button>
-            
-            <button 
-              onClick={() => startCall('video')}
-              title="Start video call"
-              className="p-2 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-indigo-400 transition"
-            >
-              <Video className="w-4 h-4" />
-            </button>
+            {!partnerProfile.isGroup && (
+              <>
+                <button 
+                  onClick={() => startCall('voice')}
+                  title="Start voice call"
+                  className="p-2 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-indigo-400 transition"
+                >
+                  <Phone className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => startCall('video')}
+                  title="Start video call"
+                  className="p-2 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-indigo-400 transition"
+                >
+                  <Video className="w-4 h-4" />
+                </button>
+              </>
+            )}
 
             <button 
-              onClick={handleBlockAction}
-              title={myProfile.blockedUsers?.includes(partnerProfile.uid) ? 'Unblock user' : 'Block user'}
-              className={`p-2 rounded-lg transition ${myProfile.blockedUsers?.includes(partnerProfile.uid) ? 'bg-indigo-950/40 text-indigo-400 border border-indigo-900/40' : 'hover:bg-slate-900 text-slate-400 hover:text-rose-400'}`}
+              onClick={() => setShowPartnerProfileDrawer(!showPartnerProfileDrawer)}
+              title="View Space Info"
+              className={`p-2 rounded-lg transition ${showPartnerProfileDrawer ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-900 text-slate-400 hover:text-indigo-400'}`}
             >
-              <Ban className="w-4 h-4" />
+              <MoreVertical className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Dynamic Message Search Bar */}
+        {/* SEARCH BOX ATTACHMENT PORTAL */}
         {showSearch && (
-          <div className="p-2.5 border-b border-slate-900 bg-[#0e121a]/60 flex items-center gap-2 z-10 animate-slideDown">
-            <Search className="w-3.5 h-3.5 text-slate-500 ml-2" />
+          <div className="p-3 bg-[#0d1017] border-b border-slate-900 flex items-center gap-2 z-10 animate-slideDown">
+            <Search className="w-4 h-4 text-slate-500" />
             <input 
-              type="text"
+              type="text" 
+              placeholder="Search secure database archives..." 
               value={searchText}
-              onChange={e => setSearchText(e.target.value)}
-              placeholder="Search chat history..."
-              className="flex-1 bg-transparent border-0 text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:ring-0 font-sans"
-              autoFocus
+              onChange={(e) => setSearchText(e.target.value)}
+              className="flex-1 bg-transparent border-0 outline-none text-xs text-white"
             />
-            {searchText && (
-              <button 
-                onClick={() => setSearchText('')}
-                className="p-1 text-slate-500 hover:text-white text-xs mr-2 font-bold"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        )}
-
-      {/* MESSAGES PORTAL */}
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4 relative">
-        
-        {/* Empty placeholder */}
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Sparkles className="w-8 h-8 text-indigo-500 animate-pulse mb-3" />
-            <h4 className="font-bold text-sm text-slate-300">Secure Messaging Hub</h4>
-            <p className="text-[10px] text-slate-500 max-w-[220px] mt-1 leading-relaxed">
-              Your messages are protected with biometric structures. Start typing to begin.
-            </p>
-          </div>
-        )}
-
-        {/* Message elements (filtered if searching) */}
-        {messages.filter(msg => 
-          !showSearch || !searchText || msg.text?.toLowerCase().includes(searchText.toLowerCase())
-        ).map((msg) => {
-          const isMe = msg.senderId === myProfile.uid;
-          const msgTime = msg.timestamp?.toDate 
-            ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-          const partnerReadEnabled = partnerProfile.readReceipts !== false;
-          const myReadEnabled = myProfile.readReceipts !== false;
-          const showBlueTicks = msg.read && partnerReadEnabled && myReadEnabled;
-
-          return (
-            <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative`}>
-              
-              <div className={`max-w-[80%] rounded-2xl p-3 shadow relative group overflow-visible ${isMe ? 'bg-blue-600 text-white' : 'bg-[#1A1D21] border border-neutral-800/80 text-[#E4E6EB]'}`}>
-                
-                {/* Text Messages */}
-                {msg.type === 'text' && (
-                  <p className="text-xs leading-relaxed break-words">{msg.text}</p>
-                )}
-
-                {/* Animated Stickers */}
-                {msg.type === 'sticker' && (
-                  <div className="flex flex-col items-center py-1">
-                    <span className={`text-4xl ${STICKERS.find(s => s.id === msg.mediaUrl)?.anim || ''}`}>
-                      {STICKERS.find(s => s.id === msg.mediaUrl)?.emoji || '✨'}
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-mono mt-1.5 uppercase">Sticker pack</span>
-                  </div>
-                )}
-
-                {/* Voice note layout */}
-                {msg.type === 'voice' && (
-                  <div className="flex items-center gap-3 py-1">
-                    <button 
-                      onClick={() => playVoiceNote(msg.id, msg.duration || 5)}
-                      className={`p-2 rounded-full flex items-center justify-center transition-all ${isMe ? 'bg-indigo-500 hover:bg-indigo-400 text-white' : 'bg-slate-950 hover:bg-slate-900 text-indigo-400'}`}
-                    >
-                      {activeVoiceNote === msg.id && isPlayingVoice ? (
-                        <Pause className="w-3.5 h-3.5 animate-pulse" />
-                      ) : (
-                        <Play className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                    <div>
-                      {/* Audio simulation waves */}
-                      <div className="flex gap-0.5 items-center h-4 w-28">
-                        {[...Array(12).keys()].map(idx => (
-                          <div 
-                            key={idx} 
-                            className={`w-1 rounded-full transition-all ${isMe ? 'bg-white' : 'bg-indigo-500'} ${activeVoiceNote === msg.id && isPlayingVoice ? 'animate-pulse h-3' : 'h-1.5'}`} 
-                          />
-                        ))}
-                      </div>
-                      <div className="flex items-center justify-between text-[8px] opacity-70 font-mono mt-1">
-                        <span>🎤 {msg.duration}s</span>
-                        {activeVoiceNote === msg.id && (
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setPlaybackSpeed(playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1); }}
-                            className="bg-black/30 px-1 rounded-md text-[7px]"
-                          >
-                            {playbackSpeed}x
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Call Log item */}
-                {msg.type === 'call_log' && (
-                  <div className="flex items-center gap-2 text-[10px] font-mono opacity-80 py-0.5">
-                    <span>{msg.text}</span>
-                  </div>
-                )}
-
-                {/* Game challenge item */}
-                {msg.type === 'game_challenge' && (
-                  <div className="flex flex-col gap-2 py-1 min-w-[160px]">
-                    <div className="flex items-center gap-2">
-                      <Gamepad2 className="w-4 h-4 text-fuchsia-400 animate-bounce" />
-                      <span className="font-bold text-xs">Konnect Game Arena</span>
-                    </div>
-                    <p className="text-[10px] text-slate-300 font-mono">Challenged to: {msg.gameInfo?.gameName}</p>
-                    
-                    {msg.gameInfo?.status === 'pending' ? (
-                      !isMe ? (
-                        <button
-                          onClick={() => acceptGameChallenge(msg.id, msg.gameInfo?.gameId || 'tictactoe')}
-                          className="w-full mt-1 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-500 text-[10px] font-bold text-white rounded-lg transition"
-                        >
-                          Accept & Play Match
-                        </button>
-                      ) : (
-                        <span className="text-[9px] text-slate-500 italic font-mono">Awaiting friend choice...</span>
-                      )
-                    ) : (
-                      <span className="text-[9px] text-emerald-400 font-mono flex items-center gap-1"><Check className="w-3 h-3" /> Challenge active / Played</span>
-                    )}
-                  </div>
-                )}
-
-                {/* Timestamp & Double check ticks */}
-                <div className={`flex items-center justify-end gap-1 text-[8px] font-mono mt-1.5 ${isMe ? 'text-indigo-200' : 'text-slate-500'}`}>
-                  <span>{msgTime}</span>
-                  {isMe && (
-                    showBlueTicks ? (
-                      <CheckCheck className="w-3.5 h-3.5 text-cyan-400" />
-                    ) : (
-                      <CheckCheck className="w-3.5 h-3.5 text-slate-400" />
-                    )
-                  )}
-                </div>
-
-                {/* Display reactions directly on message card */}
-                {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                  <div className="absolute -bottom-2 right-2 flex gap-0.5 bg-slate-950 border border-slate-800 rounded-full px-1 py-0.5 shadow">
-                    {Object.entries(msg.reactions).map(([uid, rEmoji], idx) => (
-                      <span key={idx} className="text-[9px]">{rEmoji}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* REACTION BAR HOVER BAR */}
-              <div className="opacity-0 group-hover:opacity-100 absolute -top-7 right-0 flex gap-1 bg-slate-950 border border-slate-800 rounded-full p-1 shadow-md transition z-20">
-                {quickReactions.map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={() => handleAddReaction(msg.id, emoji)}
-                    className="text-xs hover:scale-125 transition-all active:scale-95 px-0.5"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* EMOJI PORTAL IN-CHAT DRAWER WITH SEARCH */}
-      {showEmojis && (
-        <div className="absolute bottom-16 left-4 right-4 bg-[#0a0d14]/95 border border-slate-900 rounded-2xl p-4 shadow-2xl z-30 animate-slideUp backdrop-blur-md flex flex-col max-h-80">
-          <div className="flex justify-between items-center mb-3 flex-shrink-0">
-            <h5 className="font-bold text-xs text-slate-300 uppercase tracking-widest font-mono">Emoji Library</h5>
             <button 
-              onClick={() => { setShowEmojis(false); setEmojiSearch(''); }} 
-              className="p-1 text-slate-500 hover:text-white transition"
+              onClick={() => { setShowSearch(false); setSearchText(''); }}
+              className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
+        )}
 
-          {/* SEARCH BAR */}
-          <div className="mb-3 relative flex-shrink-0">
-            <input 
-              type="text"
-              value={emojiSearch}
-              onChange={(e) => setEmojiSearch(e.target.value)}
-              placeholder="Search emojis (e.g. apple, fire, flag)..."
-              className="w-full px-3.5 py-1.5 pl-9 pr-8 bg-[#121417] border border-neutral-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all font-sans"
-            />
-            <span className="absolute left-3 top-2 text-slate-500 text-xs">🔍</span>
-            {emojiSearch && (
-              <button 
-                onClick={() => setEmojiSearch('')}
-                className="absolute right-3 top-2 text-slate-500 hover:text-white text-xs"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        {/* MESSAGES LOG VIEW */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-950/20 via-[#06080c] to-[#040609]">
+          {messages
+            .filter((m) => {
+              if (!searchText) return true;
+              return m.text.toLowerCase().includes(searchText.toLowerCase());
+            })
+            .map((msg) => {
+              const isMe = msg.senderId === myProfile.uid;
+              const msgTime = msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              
+              // Only display read tick double checks if recipient read receipt config allows
+              const showBlueTicks = msg.read && (partnerProfile.readReceipts !== false);
 
-          {/* CATEGORY FILTER PILLS */}
-          <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 custom-scrollbar flex-shrink-0 text-[10px]">
-            {['all', 'food', 'animals', 'sports', 'games', 'creative', 'music', 'tech', 'science', 'fashion', 'places', 'hearts', 'zodiac', 'controls', 'symbols', 'letters', 'flags'].map((cat) => {
-              const isActive = (cat === 'all' && !emojiSearch) || (emojiSearch.toLowerCase() === cat);
               return (
-                <button
-                  key={cat}
-                  onClick={() => setEmojiSearch(cat === 'all' ? '' : cat)}
-                  className={`px-2.5 py-1 rounded-full font-semibold transition-all uppercase tracking-wider text-[9px] font-mono flex-shrink-0 ${isActive ? 'bg-blue-600 text-white' : 'bg-slate-900 hover:bg-slate-800 text-slate-400'}`}
-                >
-                  {cat}
-                </button>
+                <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative`}>
+                  <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 relative ${isMe ? 'bg-indigo-600 text-white rounded-tr-none shadow-md shadow-indigo-600/10' : 'bg-[#0f131c] border border-slate-900 text-slate-100 rounded-tl-none'}`}>
+                    
+                    {/* Render Sender Name above text bubbles in Group chats */}
+                    {!isMe && partnerProfile.isGroup && (
+                      <span className="text-[9px] text-indigo-400 font-mono mb-1 block">{msg.senderName || 'Anonymous'}</span>
+                    )}
+
+                    {/* Standard text message */}
+                    {msg.type === 'text' && (
+                      <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap">{msg.text}</p>
+                    )}
+
+                    {/* Sticker image */}
+                    {msg.type === 'sticker' && (
+                      <div className="py-1">
+                        {(() => {
+                          const sObj = STICKERS.find((s) => s.id === msg.mediaUrl);
+                          return (
+                            <div className="flex flex-col items-center">
+                              <span className={`text-4xl ${sObj?.anim || ''} select-none`}>{sObj?.emoji || '✨'}</span>
+                              <span className="text-[8px] text-slate-500 mt-1 font-mono">{sObj?.name || 'Sticker'}</span>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Shared secure photo */}
+                    {msg.type === 'image' && (
+                      <div className="py-1 select-none pointer-events-auto rounded-lg overflow-hidden border border-slate-900">
+                        <img 
+                          src={msg.mediaUrl} 
+                          alt="shared secure snapshot" 
+                          draggable="false"
+                          referrerPolicy="no-referrer"
+                          className="max-w-xs max-h-48 object-cover rounded-lg no-screenshot-css" 
+                        />
+                        <div className="bg-slate-950/60 p-1.5 text-center text-[8px] text-slate-400 font-mono border-t border-slate-900">
+                          🛡️ Screenshot Blocked Snapshot
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Voice audio note */}
+                    {msg.type === 'voice' && (
+                      <div className="py-1 min-w-[180px]">
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => playVoiceNote(msg.mediaUrl || '', msg.duration || 5)}
+                            className="p-1.5 bg-indigo-500 hover:bg-indigo-400 rounded-full text-white transition"
+                          >
+                            {activeVoiceNote === msg.mediaUrl && isPlayingVoice ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 pl-0.5" />}
+                          </button>
+                          
+                          <div className="flex-1">
+                            {/* Fake visual wave animation if active */}
+                            <div className="flex gap-0.5 items-center justify-center h-4">
+                              <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-3 animate-pulse' : 'h-1'}`} />
+                              <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-4 animate-pulse' : 'h-1'}`} style={{ animationDelay: '100ms' }} />
+                              <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-2 animate-pulse' : 'h-1'}`} style={{ animationDelay: '200ms' }} />
+                              <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-3 animate-pulse' : 'h-1'}`} style={{ animationDelay: '300ms' }} />
+                            </div>
+                            
+                            <div className="flex justify-between items-center mt-1 text-[8px] font-mono text-slate-400">
+                              <span>Voice • {msg.duration || 0}s</span>
+                              {activeVoiceNote === msg.mediaUrl && (
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); setPlaybackSpeed(playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1); }}
+                                  className="bg-black/30 px-1 rounded-md text-[7px]"
+                                >
+                                  {playbackSpeed}x
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Call Log item */}
+                    {msg.type === 'call_log' && (
+                      <div className="flex items-center gap-2 text-[10px] font-mono opacity-80 py-0.5">
+                        <span>{msg.text}</span>
+                      </div>
+                    )}
+
+                    {/* Game challenge item */}
+                    {msg.type === 'game_challenge' && (
+                      <div className="flex flex-col gap-2 py-1 min-w-[160px]">
+                        <div className="flex items-center gap-2">
+                          <Gamepad2 className="w-4 h-4 text-fuchsia-400 animate-bounce" />
+                          <span className="font-bold text-xs">Konnect Game Arena</span>
+                        </div>
+                        <p className="text-[10px] text-slate-300 font-mono">Challenged to: {msg.gameInfo?.gameName}</p>
+                        
+                        {msg.gameInfo?.status === 'pending' ? (
+                          !isMe ? (
+                            <button
+                              onClick={() => acceptGameChallenge(msg.id, msg.gameInfo?.gameId || 'tictactoe')}
+                              className="w-full mt-1 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-500 text-[10px] font-bold text-white rounded-lg transition"
+                            >
+                              Accept & Play Match
+                            </button>
+                          ) : (
+                            <span className="text-[9px] text-slate-500 italic font-mono">Awaiting friend choice...</span>
+                          )
+                        ) : (
+                          <span className="text-[9px] text-emerald-400 font-mono flex items-center gap-1"><Check className="w-3 h-3" /> Challenge active / Played</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Timestamp & Double check ticks */}
+                    <div className={`flex items-center justify-end gap-1 text-[8px] font-mono mt-1.5 ${isMe ? 'text-indigo-200' : 'text-slate-500'}`}>
+                      <span>{msgTime}</span>
+                      {isMe && (
+                        showBlueTicks ? (
+                          <CheckCheck className="w-3.5 h-3.5 text-cyan-400" />
+                        ) : (
+                          <CheckCheck className="w-3.5 h-3.5 text-slate-400" />
+                        )
+                      )}
+                    </div>
+
+                    {/* Display reactions directly on message card */}
+                    {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                      <div className="absolute -bottom-2 right-2 flex gap-0.5 bg-slate-950 border border-slate-800 rounded-full px-1 py-0.5 shadow">
+                        {Object.entries(msg.reactions).map(([uid, rEmoji], idx) => (
+                          <span key={idx} className="text-[9px]">{rEmoji}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* REACTION BAR HOVER BAR */}
+                  <div className="opacity-0 group-hover:opacity-100 absolute -top-7 right-0 flex gap-1 bg-slate-950 border border-slate-800 rounded-full p-1 shadow-md transition z-20">
+                    {quickReactions.map((emoji) => (
+                      <button
+                        key={emoji}
+                        onClick={() => handleAddReaction(msg.id, emoji)}
+                        className="text-xs hover:scale-125 transition-all active:scale-95 px-0.5"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               );
             })}
-          </div>
 
-          {/* EMOJI GRID */}
-          <div className="grid grid-cols-8 gap-2 overflow-y-auto custom-scrollbar pr-1 flex-1 min-h-[140px]">
-            {EMOJI_LIST.filter(item => 
-              item.emoji.toLowerCase().includes(emojiSearch.toLowerCase()) || 
-              item.name.toLowerCase().includes(emojiSearch.toLowerCase()) ||
-              item.category.toLowerCase().includes(emojiSearch.toLowerCase())
-            ).map((item, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleSelectEmoji(item.emoji)}
-                title={item.name}
-                className="aspect-square text-2xl hover:bg-slate-900 border border-transparent hover:border-slate-800/50 rounded-xl transition-all active:scale-90 flex items-center justify-center p-1"
-              >
-                {item.emoji}
-              </button>
-            ))}
-
-            {EMOJI_LIST.filter(item => 
-              item.emoji.toLowerCase().includes(emojiSearch.toLowerCase()) || 
-              item.name.toLowerCase().includes(emojiSearch.toLowerCase()) ||
-              item.category.toLowerCase().includes(emojiSearch.toLowerCase())
-            ).length === 0 && (
-              <div className="col-span-8 text-center py-8 text-slate-500 text-xs font-mono">
-                No matching emojis found.
+          {/* Real-time typing indicators */}
+          {(() => {
+            const activeTypers = Object.entries(typingUsers)
+              .filter(([uid, isTyping]) => isTyping && uid !== myProfile.uid)
+              .map(([uid]) => profilesMap[uid]?.displayName || 'Someone');
+            
+            if (activeTypers.length === 0) return null;
+            
+            return (
+              <div className="flex items-center gap-2 p-2.5 bg-slate-900/60 border border-slate-800 rounded-xl w-fit ml-4 mb-4 animate-pulse">
+                <div className="flex gap-1 items-center">
+                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {activeTypers.join(', ')} {activeTypers.length === 1 ? 'is' : 'are'} typing...
+                </span>
               </div>
-            )}
-          </div>
-        </div>
-      )}
+            );
+          })()}
 
-      {/* STICKER PORTAL IN-CHAT DRAWER */}
-      {showStickers && (
-        <div className="absolute bottom-16 left-4 right-4 bg-slate-950 border border-slate-900 rounded-2xl p-4 shadow-2xl z-30 animate-slideUp">
-          <div className="flex justify-between items-center mb-3">
-            <h5 className="font-bold text-xs text-slate-300 uppercase tracking-widest font-mono">Animated Stickers</h5>
-            <button onClick={() => setShowStickers(false)} className="p-1 text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
-          </div>
-          <div className="grid grid-cols-5 gap-3.5">
-            {STICKERS.map((st) => (
-              <button
-                key={st.id}
-                onClick={() => handleSendSticker(st.id)}
-                className="flex flex-col items-center p-2.5 bg-slate-900 border border-slate-900 hover:border-slate-800 hover:bg-slate-900/60 rounded-xl transition group"
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* EMOJI PORTAL IN-CHAT DRAWER WITH SEARCH */}
+        {showEmojis && (
+          <div className="absolute bottom-16 left-4 right-4 bg-[#0a0d14]/95 border border-slate-900 rounded-2xl p-4 shadow-2xl z-30 animate-slideUp backdrop-blur-md flex flex-col max-h-80">
+            <div className="flex justify-between items-center mb-3 flex-shrink-0">
+              <h5 className="font-bold text-xs text-slate-300 uppercase tracking-widest font-mono">Emoji Library</h5>
+              <button 
+                onClick={() => { setShowEmojis(false); setEmojiSearch(''); }} 
+                className="p-1 text-slate-500 hover:text-white transition"
               >
-                <span className={`text-3xl group-hover:scale-110 transition duration-150 ${st.anim}`}>{st.emoji}</span>
-                <span className="text-[8px] text-slate-500 font-mono mt-1.5 truncate max-w-full">{st.name}</span>
+                <X className="w-4 h-4" />
               </button>
-            ))}
+            </div>
+            
+            <div className="mb-3 flex-shrink-0">
+              <input 
+                type="text" 
+                placeholder="Search secure emojis..." 
+                value={emojiSearch}
+                onChange={(e) => setEmojiSearch(e.target.value)}
+                className="w-full px-3 py-1.5 bg-[#0e121a] border border-slate-900 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+              />
+            </div>
+            
+            <div className="grid grid-cols-8 gap-2 overflow-y-auto custom-scrollbar p-1 max-h-48">
+              {EMOJI_LIST.filter(emoji => !emojiSearch || emoji.name.includes(emojiSearch.toLowerCase())).map((e, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => { setInputText(prev => prev + e.emoji); setShowEmojis(false); setEmojiSearch(''); }}
+                  className="text-xl hover:scale-125 transition active:scale-90 p-1 flex items-center justify-center rounded-lg hover:bg-slate-900"
+                  title={e.name}
+                >
+                  {e.emoji}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* INPUT CONTROLLER TRAIL */}
-      <div className="p-3 border-t border-neutral-800 bg-[#121417]/95 backdrop-blur flex flex-col gap-2.5 z-10 relative">
-        {/* Expanded media quick menu */}
+        {/* STICKER BOX IN-CHAT ATTACHMENT */}
+        {showStickers && (
+          <div className="absolute bottom-16 left-4 right-4 bg-[#0a0d14]/95 border border-slate-900 rounded-2xl p-4 shadow-2xl z-30 animate-slideUp backdrop-blur-md flex flex-col max-h-80">
+            <div className="flex justify-between items-center mb-3 flex-shrink-0">
+              <h5 className="font-bold text-xs text-slate-300 uppercase tracking-widest font-mono">Vector Sticker Packs</h5>
+              <button 
+                onClick={() => setShowStickers(false)} 
+                className="p-1 text-slate-500 hover:text-white transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-5 gap-3 overflow-y-auto custom-scrollbar p-1 max-h-56">
+              {STICKERS.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => handleSendSticker(s.id)}
+                  className="p-2 bg-slate-950 hover:bg-[#0e121a] border border-slate-900 hover:border-indigo-500/40 rounded-xl flex flex-col items-center gap-1.5 transition active:scale-95 group duration-200"
+                >
+                  <span className={`text-3xl select-none group-hover:scale-110 transition duration-200 ${s.anim}`}>{s.emoji}</span>
+                  <span className="text-[8px] text-slate-500 group-hover:text-slate-300 font-mono text-center truncate w-full">{s.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* COMPRESSION ATTACHMENTS SHELF */}
         {showMediaMenu && (
-          <div className="flex items-center gap-2 pb-1 animate-slideDown">
-            {/* Stickers toggle */}
+          <div className="p-3 bg-[#0d1017] border-t border-slate-900 flex flex-wrap gap-2 animate-slideUp z-10">
             <button 
               type="button"
-              onClick={() => { setShowStickers(!showStickers); setShowEmojis(false); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold font-mono uppercase tracking-wider transition ${showStickers ? 'bg-fuchsia-600 text-white' : 'bg-[#1a1d24] text-slate-400 hover:text-white border border-slate-800'}`}
-              title="Stickers"
+              onClick={() => { setShowStickers(!showStickers); setShowEmojis(false); setShowMediaMenu(false); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a1d24] text-slate-400 hover:text-white border border-slate-800 rounded-xl text-[10px] font-bold font-mono uppercase tracking-wider transition"
             >
               <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
               <span>Stickers</span>
@@ -928,184 +1092,177 @@ export default function ChatWindow({
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          {/* Plus toggle button */}
-          <button
-            type="button"
-            onClick={() => setShowMediaMenu(!showMediaMenu)}
-            className={`p-2.5 rounded-xl transition-all duration-200 ${showMediaMenu ? 'bg-indigo-600/20 text-indigo-400 rotate-45' : 'hover:bg-neutral-800 text-slate-400 hover:text-white'}`}
-            title="Toggle Attachments"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+        <div className="p-4 border-t border-slate-900 bg-[#0e121a]/60 backdrop-blur-md flex flex-col gap-2 z-10">
+          <div className="flex items-center gap-2">
+            {/* Plus toggle button */}
+            <button
+              type="button"
+              onClick={() => setShowMediaMenu(!showMediaMenu)}
+              className={`p-2.5 rounded-xl transition-all duration-200 ${showMediaMenu ? 'bg-indigo-600/20 text-indigo-400 rotate-45' : 'hover:bg-neutral-800 text-slate-400 hover:text-white'}`}
+              title="Toggle Attachments"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
 
-          {/* Main message form */}
-          <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 items-center">
-            {/* Input field with Smile icon embedded */}
-            <div className="relative flex-1 flex items-center">
-              <button 
-                type="button"
-                onClick={() => { setShowEmojis(!showEmojis); setShowStickers(false); }}
-                className={`absolute left-3.5 transition ${showEmojis ? 'text-blue-500 scale-110' : 'text-slate-500 hover:text-white'}`}
-                title="Toggle Emojis"
-              >
-                <Smile className="w-5 h-5" />
-              </button>
+            {/* Main message form */}
+            <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 items-center">
+              {/* Input field with Smile icon embedded */}
+              <div className="relative flex-1 flex items-center">
+                <button 
+                  type="button"
+                  onClick={() => { setShowEmojis(!showEmojis); setShowStickers(false); }}
+                  className={`absolute left-3.5 transition ${showEmojis ? 'text-blue-500 scale-110' : 'text-slate-500 hover:text-white'}`}
+                  title="Toggle Emojis"
+                >
+                  <Smile className="w-5 h-5" />
+                </button>
 
-              <input 
-                type="text" 
-                value={inputText}
-                onChange={e => setInputText(e.target.value)}
-                placeholder="Type your secure message..."
-                className="w-full pl-11 pr-3 py-2.5 bg-[#0A0B0D] border border-neutral-800 rounded-xl text-xs text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
-              />
-            </div>
-
-            {/* Voice recorder dynamic toggle button */}
-            {inputText.trim().length === 0 ? (
-              <button
-                type="button"
-                onMouseDown={startRecording}
-                onMouseUp={() => stopRecording(false)}
-                onTouchStart={startRecording}
-                onTouchEnd={() => stopRecording(false)}
-                className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${isRecording ? 'bg-rose-600 text-white animate-pulse' : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400'}`}
-                title="Hold to Record Voice Note"
-              >
-                <Mic className="w-4 h-4" />
-              </button>
-            ) : (
-              <button 
-                type="submit"
-                className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg transition active:scale-[0.97]"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            )}
-          </form>
-        </div>
-      </div>
-
-      {/* FULL CALL PANEL SIMULATION PORTAL OVERLAY */}
-      {callSession && (
-        <div className="absolute inset-0 z-50 bg-[#020408]/95 backdrop-blur-md flex items-center justify-center p-4">
-          <div className={`w-full ${callSession.status === 'connected' && callSession.type === 'video' ? 'max-w-3xl h-[600px]' : 'max-w-sm h-[450px]'} bg-gradient-to-b from-[#090e17] to-[#04060b] border border-slate-800 rounded-3xl p-6 text-center shadow-2xl flex flex-col justify-between transition-all duration-300`}>
-            
-            {/* Top Info */}
-            <div className="space-y-3 pt-4">
-              <div className="relative inline-block">
-                <div className="w-16 h-16 rounded-full border-2 border-indigo-500/40 p-1 mx-auto animate-pulse">
-                  <img src={partnerProfile.photoURL} alt="Avatar" className="w-full h-full object-cover rounded-full" />
-                </div>
-                {callSession.type === 'video' && (
-                  <span className="absolute bottom-0 right-1 p-1 bg-indigo-500 text-white rounded-full text-[10px]">📹</span>
-                )}
+                <input 
+                  type="text" 
+                  value={inputText}
+                  onChange={e => handleTypingText(e.target.value)}
+                  placeholder="Type your secure message..."
+                  className="w-full pl-11 pr-3 py-2.5 bg-[#0A0B0D] border border-neutral-800 rounded-xl text-xs text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                />
               </div>
-              
-              <h3 className="font-extrabold text-base text-white">{partnerProfile.displayName}</h3>
-              <p className="text-[10px] text-indigo-400 font-mono tracking-widest uppercase">
-                {callSession.status === 'ringing' ? 'Incoming secure line...' : `Secure ${callSession.type} connected`}
-              </p>
-            </div>
 
-            {/* Real Open-Source Calling Integration (Jitsi Meet iframe) */}
-            {callSession.status === 'connected' && (
-              <div className="flex-1 my-4 flex flex-col justify-center">
-                {callSession.type === 'video' ? (
-                  /* Real Video Feed */
-                  <div className="w-full h-full min-h-[320px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative">
-                    <iframe
-                      src={`https://meet.ffmuc.net/${callSession.roomId}#config.prejoinPageEnabled=false&config.startWithVideoMuted=false&config.startWithAudioMuted=false&config.disableDeepLinking=true`}
-                      allow="camera; microphone; display-capture; autoplay; clipboard-write"
-                      className="w-full h-full border-0 rounded-2xl"
-                    />
-                  </div>
-                ) : (
-                  /* Real Voice Feed with Hidden Frame + Voice Waveform HUD */
-                  <div className="w-full py-6 bg-[#06090e] border border-slate-900 rounded-2xl relative flex flex-col items-center justify-center overflow-hidden">
-                    {/* Hidden Jitsi iframe to handle voice streaming */}
-                    <iframe
-                      src={`https://meet.ffmuc.net/${callSession.roomId}#config.prejoinPageEnabled=false&config.startWithVideoMuted=true&config.startWithAudioMuted=false&config.disableDeepLinking=true`}
-                      allow="camera; microphone; autoplay"
-                      className="w-0 h-0 border-0 pointer-events-none absolute"
-                    />
-                    
-                    {/* Animated waves/rings */}
-                    <div className="absolute w-28 h-28 rounded-full border border-blue-500/10 animate-ping" />
-                    <div className="absolute w-20 h-20 rounded-full border border-indigo-500/20 animate-pulse" />
-                    
-                    <div className="relative z-10 flex flex-col items-center">
-                      <Mic className="w-8 h-8 text-indigo-400 animate-pulse mb-2" />
-                      <span className="text-[10px] font-mono uppercase tracking-widest text-indigo-400">High Definition Voice Channel</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Connection timer info */}
-            {callSession.status === 'connected' && (
-              <p className="text-xl font-semibold font-mono text-white tracking-widest animate-pulse mb-2">
-                {Math.floor(callTimer / 60).toString().padStart(2, '0')}:{(callTimer % 60).toString().padStart(2, '0')}
-              </p>
-            )}
-
-            {/* Simulated sound warning label */}
-            {callSession.status === 'ringing' && (
-              <p className="text-[10px] text-slate-500 px-6">
-                Direct connections are fully encrypted end-to-end to secure caller coordinates and metadata.
-              </p>
-            )}
-
-            {/* Controls */}
-            <div className="flex justify-center gap-6 pb-2">
-              {callSession.status === 'ringing' ? (
-                <>
-                  {callSession.callerId === myProfile.uid ? (
-                    <button 
-                      onClick={endCall}
-                      className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition-all"
-                    >
-                      Cancel Call
-                    </button>
-                  ) : (
-                    <>
-                      <button 
-                        onClick={endCall}
-                        className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition-all"
-                      >
-                        Decline
-                      </button>
-                      <button 
-                        onClick={acceptCall}
-                        className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white rounded-full shadow-lg shadow-emerald-600/20 active:scale-95 transition-all animate-bounce"
-                      >
-                        Accept
-                      </button>
-                    </>
-                  )}
-                </>
+              {/* Voice recorder dynamic toggle button */}
+              {inputText.trim().length === 0 ? (
+                <button
+                  type="button"
+                  onMouseDown={startRecording}
+                  onMouseUp={() => stopRecording(false)}
+                  onTouchStart={startRecording}
+                  onTouchEnd={() => stopRecording(false)}
+                  className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${isRecording ? 'bg-rose-600 text-white animate-pulse' : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400'}`}
+                  title="Hold to Record Voice Note"
+                >
+                  <Mic className="w-4 h-4" />
+                </button>
               ) : (
                 <button 
-                  onClick={endCall}
-                  className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition"
+                  type="submit"
+                  className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg transition active:scale-[0.97]"
                 >
-                  Disconnect call
+                  <Send className="w-4 h-4" />
                 </button>
               )}
-            </div>
+            </form>
           </div>
         </div>
-      )}
-      
+
+        {/* FULL CALL PANEL SIMULATION PORTAL OVERLAY */}
+        {callSession && (
+          <div className="absolute inset-0 z-50 bg-[#020408]/95 backdrop-blur-md flex items-center justify-center p-4 md:p-6">
+            <div className={`w-full ${callSession.status === 'connected' ? 'max-w-5xl h-[85vh] md:h-[750px]' : 'max-w-md h-[480px]'} bg-gradient-to-b from-[#090e17] to-[#04060b] border border-slate-800 rounded-3xl p-6 text-center shadow-2xl flex flex-col justify-between transition-all duration-300`}>
+              
+              {/* Top Info */}
+              <div className="space-y-3 pt-2">
+                <div className="relative inline-block">
+                  <div className="w-16 h-16 rounded-full border-2 border-indigo-500/40 p-1 mx-auto animate-pulse">
+                    <SecureAvatar src={partnerProfile.photoURL || ''} alt="Avatar" className="w-full h-full object-cover rounded-full" />
+                  </div>
+                  {callSession.type === 'video' && (
+                    <span className="absolute bottom-0 right-1 p-1 bg-indigo-500 text-white rounded-full text-[10px]">📹</span>
+                  )}
+                </div>
+                
+                <h3 className="font-extrabold text-base text-white">{partnerProfile.displayName}</h3>
+                <p className="text-[10px] text-indigo-400 font-mono tracking-widest uppercase">
+                  {callSession.status === 'ringing' ? 'Incoming secure line...' : `Secure ${callSession.type} connected`}
+                </p>
+              </div>
+
+              {/* Real Open-Source Calling Integration (Jitsi Meet iframe) */}
+              {callSession.status === 'connected' && (
+                <div className="flex-1 my-4 flex flex-col justify-center min-h-[350px]">
+                  {callSession.type === 'video' ? (
+                    /* Real Video Feed */
+                    <div className="w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative">
+                      <iframe
+                        src={`https://meet.jit.si/${callSession.roomId}#config.prejoinPageEnabled=false&config.startWithVideoMuted=false&config.startWithAudioMuted=false&config.disableDeepLinking=true`}
+                        allow="camera; microphone; display-capture; autoplay; clipboard-write"
+                        className="w-full h-full border-0 rounded-2xl"
+                      />
+                    </div>
+                  ) : (
+                    /* Real Voice Feed with Hidden Frame + Voice Waveform HUD */
+                    <div className="w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative flex flex-col">
+                      <iframe
+                        src={`https://meet.jit.si/${callSession.roomId}#config.prejoinPageEnabled=false&config.startWithVideoMuted=true&config.startWithAudioMuted=false&config.disableDeepLinking=true`}
+                        allow="camera; microphone; autoplay; display-capture; clipboard-write"
+                        className="w-full h-full border-0 rounded-2xl"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Connection timer info */}
+              {callSession.status === 'connected' && (
+                <p className="text-xl font-semibold font-mono text-white tracking-widest animate-pulse mb-2">
+                  {Math.floor(callTimer / 60).toString().padStart(2, '0')}:{(callTimer % 60).toString().padStart(2, '0')}
+                </p>
+              )}
+
+              {/* Simulated sound warning label */}
+              {callSession.status === 'ringing' && (
+                <p className="text-[10px] text-slate-500 px-6">
+                  Direct connections are fully encrypted end-to-end to secure caller coordinates and metadata.
+                </p>
+              )}
+
+              {/* Controls */}
+              <div className="flex justify-center gap-6 pb-2">
+                {callSession.status === 'ringing' ? (
+                  <>
+                    {callSession.callerId === myProfile.uid ? (
+                      <button 
+                        onClick={endCall}
+                        className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition-all flex items-center gap-2"
+                      >
+                        <PhoneOff className="w-4 h-4" /> Cancel Call
+                      </button>
+                    ) : (
+                      <>
+                        <button 
+                          onClick={endCall}
+                          className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition-all flex items-center gap-2"
+                        >
+                          <PhoneOff className="w-4 h-4" /> Decline
+                        </button>
+                        <button 
+                          onClick={acceptCall}
+                          className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white rounded-full shadow-lg shadow-emerald-600/20 active:scale-95 transition-all animate-bounce flex items-center gap-2"
+                        >
+                          <Phone className="w-4 h-4" /> Accept
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <button 
+                    onClick={endCall}
+                    className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition flex items-center gap-2"
+                  >
+                    <PhoneOff className="w-4 h-4" /> Disconnect Call
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        
       </div>
       
-      {/* RIGHT DRAWER: PARTNER PROFILE DETAILS */}
+      {/* RIGHT DRAWER: PROFILE DETAILS OR GROUP SETTINGS */}
       {showPartnerProfileDrawer && (
         <div className="w-72 border-l border-slate-900 bg-[#0e121a] flex flex-col h-full z-20 flex-shrink-0 absolute right-0 top-0 bottom-0 shadow-2xl md:relative md:flex">
           {/* Drawer Header */}
           <div className="p-4 border-b border-slate-900 bg-[#121620] flex items-center justify-between">
-            <h4 className="font-bold text-xs text-slate-200 uppercase tracking-wider font-mono">Profile Details</h4>
+            <h4 className="font-bold text-xs text-slate-200 uppercase tracking-wider font-mono">
+              {partnerProfile.isGroup ? 'Group Space Info' : 'Profile Details'}
+            </h4>
             <button 
               onClick={() => setShowPartnerProfileDrawer(false)}
               className="p-1 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition"
@@ -1123,53 +1280,259 @@ export default function ChatWindow({
             
             {/* Avatar & Info */}
             <div className="flex flex-col items-center -mt-10 px-4 pb-6 border-b border-slate-900/60 relative z-10">
-              <img 
-                src={partnerProfile.photoURL} 
-                alt={partnerProfile.displayName} 
-                className="w-20 h-20 rounded-full border-4 border-[#0e121a] object-cover bg-neutral-800 shadow-lg" 
-              />
-              <h3 className="font-bold text-base text-white mt-2 text-center line-clamp-1">{partnerProfile.displayName}</h3>
-              <p className="text-[10px] text-indigo-400 font-mono">@{partnerProfile.username}</p>
+              <div className="relative">
+                <SecureAvatar 
+                  src={partnerProfile.photoURL || ''} 
+                  alt={partnerProfile.displayName} 
+                  className="w-20 h-20 rounded-full border-4 border-[#0e121a] object-cover bg-neutral-800 shadow-lg" 
+                />
+              </div>
+              
+              {!isEditingGroup ? (
+                <>
+                  <h3 className="font-bold text-base text-white mt-2 text-center line-clamp-1">
+                    {partnerProfile.displayName}
+                  </h3>
+                  <p className="text-[10px] text-indigo-400 font-mono">
+                    {partnerProfile.isGroup ? 'Secure Encrypted Group Space' : `@${partnerProfile.username}`}
+                  </p>
+                </>
+              ) : (
+                <div className="w-full mt-3 space-y-2">
+                  <input 
+                    type="text"
+                    value={groupNameInput}
+                    onChange={(e) => setGroupNameInput(e.target.value)}
+                    placeholder="Enter Group Name..."
+                    className="w-full px-2 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                  />
+                  <input 
+                    type="text"
+                    value={groupPhotoInput}
+                    onChange={(e) => setGroupPhotoInput(e.target.value)}
+                    placeholder="Group Avatar URL..."
+                    className="w-full px-2 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                  />
+                </div>
+              )}
               
               {/* Online/Offline status badge */}
-              <div className="mt-3 flex items-center gap-1.5 px-3 py-1 bg-slate-950/40 rounded-full border border-slate-900">
-                <div className={`w-2 h-2 rounded-full ${partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">
-                  {partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'Online' : 'Offline'}
-                </span>
-              </div>
+              {!partnerProfile.isGroup && (
+                <div className="mt-3 flex items-center gap-1.5 px-3 py-1 bg-slate-950/40 rounded-full border border-slate-900">
+                  <div className={`w-2 h-2 rounded-full ${partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`} />
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                    {partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'Online' : 'Offline'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Bio / About */}
             <div className="p-5 space-y-4">
               <div>
-                <h5 className="text-[9px] uppercase font-bold tracking-widest text-slate-500 mb-1.5 font-mono">Biography</h5>
-                <p className="text-xs text-slate-300 bg-slate-950/20 p-3 rounded-xl border border-slate-900/60 leading-relaxed font-sans">
-                  {partnerProfile.bio || "No status bio provided."}
-                </p>
+                <h5 className="text-[9px] uppercase font-bold tracking-widest text-slate-500 mb-1.5 font-mono">
+                  {partnerProfile.isGroup ? 'Group Description' : 'Biography'}
+                </h5>
+                {!isEditingGroup ? (
+                  <p className="text-xs text-slate-300 bg-slate-950/20 p-3 rounded-xl border border-slate-900/60 leading-relaxed font-sans">
+                    {partnerProfile.bio || "No description provided."}
+                  </p>
+                ) : (
+                  <textarea 
+                    value={groupDescInput}
+                    onChange={(e) => setGroupDescInput(e.target.value)}
+                    placeholder="Group Description..."
+                    className="w-full h-16 p-2 bg-slate-950 border border-slate-800 rounded text-xs text-white resize-none"
+                  />
+                )}
               </div>
 
-              {/* Relationship Actions */}
-              <div className="pt-4 border-t border-slate-900 space-y-2">
-                <button 
-                  onClick={handleClearHistory}
-                  className="w-full py-2 bg-slate-900 hover:bg-indigo-950/20 hover:text-indigo-400 hover:border-indigo-900/40 border border-slate-800 rounded-xl text-xs font-semibold text-slate-300 transition-all active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" /> Clear Chat History
-                </button>
-                <button 
-                  onClick={handleRemoveFriend}
-                  className="w-full py-2 bg-slate-900 hover:bg-rose-950/20 hover:text-rose-400 hover:border-rose-900/40 border border-slate-800 rounded-xl text-xs font-semibold text-slate-300 transition-all active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <X className="w-4 h-4" /> Remove Friend
-                </button>
-                <button 
-                  onClick={handleBlockAction}
-                  className={`w-full py-2 border rounded-xl text-xs font-semibold transition-all active:scale-95 flex items-center justify-center gap-2 ${myProfile.blockedUsers?.includes(partnerProfile.uid) ? 'bg-indigo-950/40 text-indigo-400 border-indigo-900/40' : 'bg-slate-900 hover:bg-rose-950/20 hover:text-rose-400 hover:border-rose-900/40 border-slate-800 text-slate-300'}`}
-                >
-                  <Ban className="w-4 h-4" /> {myProfile.blockedUsers?.includes(partnerProfile.uid) ? 'Unblock Friend' : 'Block Friend'}
-                </button>
-              </div>
+              {partnerProfile.isGroup && currentGroupData && (
+                <div className="space-y-4 border-t border-slate-900/60 pt-4">
+                  
+                  {/* GROUP ADMIN RULES AND ACTIONS */}
+                  {(() => {
+                    const isMeCreator = currentGroupData.createdBy === myProfile.uid;
+                    const isMeAdmin = currentGroupData.admins?.includes(myProfile.uid) || isMeCreator || currentGroupData.noAdminMode;
+                    
+                    return (
+                      <>
+                        {/* Admin Action Bar */}
+                        {isMeAdmin && (
+                          <div className="space-y-2 bg-slate-950/30 p-3 rounded-xl border border-slate-900/40">
+                            <h6 className="text-[9px] uppercase font-bold tracking-wider text-slate-400 font-mono flex items-center gap-1">
+                              <SettingsIcon className="w-3 h-3 text-indigo-400" /> Admin Command panel
+                            </h6>
+                            
+                            {!isEditingGroup ? (
+                              <button 
+                                onClick={() => setIsEditingGroup(true)}
+                                className="w-full py-1.5 bg-slate-900 hover:bg-indigo-900/40 text-[10px] font-bold rounded-lg border border-slate-800 text-indigo-300 transition"
+                              >
+                                Edit Group Profile
+                              </button>
+                            ) : (
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => setIsEditingGroup(false)}
+                                  className="flex-1 py-1 bg-slate-900 hover:bg-slate-800 text-[9px] font-bold rounded-lg border border-slate-800 text-slate-300 transition"
+                                >
+                                  Cancel
+                                </button>
+                                <button 
+                                  onClick={handleUpdateGroupDetails}
+                                  className="flex-1 py-1 bg-indigo-600 hover:bg-indigo-500 text-[9px] font-bold rounded-lg text-white transition"
+                                >
+                                  Save Changes
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Creator only admin switch */}
+                            {isMeCreator && (
+                              <div className="flex items-center justify-between pt-1.5 border-t border-slate-900/50">
+                                <span className="text-[9px] text-slate-400 font-mono">No-Admin Mode</span>
+                                <button 
+                                  onClick={handleToggleNoAdminMode}
+                                  className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold transition-all ${currentGroupData.noAdminMode ? 'bg-emerald-950 text-emerald-400 border border-emerald-900/40' : 'bg-slate-900 text-slate-500 border border-slate-800'}`}
+                                >
+                                  {currentGroupData.noAdminMode ? 'ENABLED (Free-Edit)' : 'DISABLED (Restricted)'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Add Member list */}
+                        {isMeAdmin && (
+                          <div className="space-y-2">
+                            <h6 className="text-[9px] uppercase font-bold tracking-wider text-slate-500 font-mono">Add Member to Group</h6>
+                            <div className="flex gap-1.5">
+                              <select 
+                                value={selectedNewMember}
+                                onChange={(e) => setSelectedNewMember(e.target.value)}
+                                className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-white"
+                              >
+                                <option value="">Select Friend...</option>
+                                {Object.values(profilesMap)
+                                  .filter(p => p.uid !== myProfile.uid && !currentGroupData.participants?.includes(p.uid))
+                                  .map(p => (
+                                    <option key={p.uid} value={p.uid}>{p.displayName} (@{p.username})</option>
+                                  ))}
+                              </select>
+                              <button 
+                                onClick={() => handleAddGroupMember(selectedNewMember)}
+                                disabled={!selectedNewMember}
+                                className="p-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-900 disabled:text-slate-700 text-white rounded transition"
+                              >
+                                <UserPlus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Members rendering roster */}
+                        <div className="space-y-2.5">
+                          <h6 className="text-[9px] uppercase font-bold tracking-wider text-slate-500 font-mono">Roster ({currentGroupData.participants?.length || 0} Members)</h6>
+                          <div className="space-y-1.5">
+                            {currentGroupData.participants?.map((pUid: string) => {
+                              const memberProf = profilesMap[pUid];
+                              if (!memberProf) return null;
+                              
+                              const isCreator = currentGroupData.createdBy === pUid;
+                              const isAdmin = currentGroupData.admins?.includes(pUid) || isCreator;
+                              const isMemberOnline = memberProf.status === 'online' && !memberProf.stealthMode;
+
+                              return (
+                                <div key={pUid} className="flex items-center justify-between p-1.5 bg-slate-950/20 rounded-lg border border-slate-900/60">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="relative">
+                                      <SecureAvatar src={memberProf.photoURL || ''} alt="member" className="w-7 h-7 rounded-full" />
+                                      <div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-[#0e121a] ${isMemberOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`} />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <span className="text-[10px] font-medium text-slate-200 block truncate leading-tight">{memberProf.displayName}</span>
+                                      <span className="text-[8px] text-slate-500 font-mono block truncate">@{memberProf.username}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Member Flags / Actions */}
+                                  <div className="flex items-center gap-1">
+                                    {isCreator && (
+                                      <span className="p-1 bg-yellow-950 border border-yellow-900/40 rounded text-[7px] text-yellow-500" title="Creator of this Group Space">
+                                        <Crown className="w-2.5 h-2.5" />
+                                      </span>
+                                    )}
+                                    {!isCreator && isAdmin && (
+                                      <span className="p-1 bg-blue-950 border border-blue-900/40 rounded text-[7px] text-blue-400 font-mono uppercase font-bold">
+                                        Admin
+                                      </span>
+                                    )}
+
+                                    {/* Admin Action Menu for other members */}
+                                    {isMeAdmin && pUid !== myProfile.uid && !isCreator && (
+                                      <div className="flex gap-0.5 ml-1">
+                                        <button 
+                                          onClick={() => handleToggleAdmin(pUid, currentGroupData.admins?.includes(pUid))}
+                                          title={currentGroupData.admins?.includes(pUid) ? "Revoke Admin Status" : "Grant Admin Status"}
+                                          className="p-1 hover:bg-slate-800 text-slate-400 hover:text-indigo-400 rounded transition"
+                                        >
+                                          <SettingsIcon className="w-3 h-3" />
+                                        </button>
+                                        <button 
+                                          onClick={() => handleRemoveGroupMember(pUid)}
+                                          title="Remove Member from Group"
+                                          className="p-1 hover:bg-slate-800 text-slate-400 hover:text-rose-500 rounded transition"
+                                        >
+                                          <UserMinus className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+
+                  {/* Leave Group Button */}
+                  <div className="pt-2">
+                    <button 
+                      onClick={handleLeaveGroup}
+                      className="w-full py-2 bg-rose-950/20 hover:bg-rose-950/40 hover:text-rose-400 border border-rose-900/40 rounded-xl text-xs font-semibold text-rose-300 transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <X className="w-4 h-4" /> Leave Group Space
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Relationship Actions for 1-on-1 direct channels */}
+              {!partnerProfile.isGroup && (
+                <div className="pt-4 border-t border-slate-900 space-y-2">
+                  <button 
+                    onClick={handleClearHistory}
+                    className="w-full py-2 bg-slate-900 hover:bg-indigo-950/20 hover:text-indigo-400 hover:border-indigo-900/40 border border-slate-800 rounded-xl text-xs font-semibold text-slate-300 transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" /> Clear Chat History
+                  </button>
+                  <button 
+                    onClick={handleRemoveFriend}
+                    className="w-full py-2 bg-slate-900 hover:bg-rose-950/20 hover:text-rose-400 hover:border-rose-900/40 border border-slate-800 rounded-xl text-xs font-semibold text-slate-300 transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <X className="w-4 h-4" /> Remove Friend
+                  </button>
+                  <button 
+                    onClick={handleBlockAction}
+                    className={`w-full py-2 border rounded-xl text-xs font-semibold transition-all active:scale-95 flex items-center justify-center gap-2 ${myProfile.blockedUsers?.includes(partnerProfile.uid) ? 'bg-indigo-950/40 text-indigo-400 border-indigo-900/40' : 'bg-slate-900 hover:bg-rose-950/20 hover:text-rose-400 hover:border-rose-900/40 border-slate-800 text-slate-300'}`}
+                  >
+                    <Ban className="w-4 h-4" /> {myProfile.blockedUsers?.includes(partnerProfile.uid) ? 'Unblock Friend' : 'Block Friend'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

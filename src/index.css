@@ -5,3 +5,14 @@
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
+
+@layer utilities {
+  /* Prevent copy/save-as print/screenshot captures on secure avatars */
+  @media print {
+    .no-screenshot-css {
+      display: none !important;
+      visibility: hidden !important;
+    }
+  }
+}
+

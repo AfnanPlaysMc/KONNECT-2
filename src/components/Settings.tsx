@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Shield, Palette, Volume2, User, EyeOff, Check, Ban, AlertCircle, 
-  Upload, Sparkles, UserCheck, Smartphone, Eye, LogOut
+  Upload, Sparkles, UserCheck, Smartphone, Eye, LogOut, ArrowLeft
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -351,21 +351,32 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
           
           {/* HEADER */}
           <div className="flex justify-between items-center px-6 py-4 border-b border-slate-900 bg-slate-950/20">
-            <div>
-              <h3 className="font-bold text-base text-white">
-                {activeTab === 'profile' && 'Personal Profile ID'}
-                {activeTab === 'theme' && 'Visual Spaces'}
-                {activeTab === 'privacy' && 'Advanced Stealth Space'}
-                {activeTab === 'sounds' && 'Acoustic Notification Mapping'}
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                {activeTab === 'profile' && 'Change your name, custom username bio or banner.'}
-                {activeTab === 'theme' && 'Swap styles between AMOLED obsidian and vibrant cyber neon.'}
-                {activeTab === 'privacy' && 'Stealth state control, block list editing and stories list.'}
-                {activeTab === 'sounds' && 'Assign custom auditory signatures to individual contacts.'}
-              </p>
+            <div className="flex items-center gap-4 min-w-0">
+              <button 
+                onClick={onClose}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-slate-800 transition active:scale-95 flex-shrink-0"
+                title="Go back to chat"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back</span>
+              </button>
+
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm text-white leading-tight truncate">
+                  {activeTab === 'profile' && 'Personal Profile ID'}
+                  {activeTab === 'theme' && 'Visual Spaces'}
+                  {activeTab === 'privacy' && 'Advanced Stealth Space'}
+                  {activeTab === 'sounds' && 'Acoustic Notification Mapping'}
+                </h3>
+                <p className="text-[10px] text-slate-400 line-clamp-1">
+                  {activeTab === 'profile' && 'Change your name, custom username bio or banner.'}
+                  {activeTab === 'theme' && 'Swap styles between AMOLED obsidian and vibrant cyber neon.'}
+                  {activeTab === 'privacy' && 'Stealth state control, block list editing and stories list.'}
+                  {activeTab === 'sounds' && 'Assign custom auditory signatures to individual contacts.'}
+                </p>
+              </div>
             </div>
-            <button onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition">
+            <button onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition" title="Close Settings">
               <X className="w-4 h-4" />
             </button>
           </div>

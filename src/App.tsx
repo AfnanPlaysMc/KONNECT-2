@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, updateDoc, setDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserProfile, THEMES } from './types';
 import Auth from './components/Auth';
@@ -14,6 +14,7 @@ import { MessageSquare, Shield, Gamepad2, Film, Sparkles, RefreshCw } from 'luci
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profilesMap, setProfilesMap] = useState<Record<string, UserProfile>>({});
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activePartner, setActivePartner] = useState<UserProfile | null>(null);
 
@@ -42,6 +43,25 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Sync profiles map in real-time
+  useEffect(() => {
+    if (!user) {
+      setProfilesMap({});
+      return;
+    }
+    const unsubscribe = onSnapshot(collection(db, 'profiles'), (snapshot) => {
+      const map: Record<string, UserProfile> = {};
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as UserProfile;
+        map[docSnap.id] = data;
+      });
+      setProfilesMap(map);
+    }, (err) => {
+      console.warn("Profiles collection sync handled error:", err);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   const syncProfile = async (uid: string) => {
     try {
@@ -93,6 +113,126 @@ export default function App() {
     setActiveChatId(chatId);
     setActivePartner(partner);
   };
+
+  const openChatWithFriend = async (friendUid: string) => {
+    if (!profile) return;
+    try {
+      const friendSnap = await getDoc(doc(db, 'profiles', friendUid));
+      if (!friendSnap.exists()) return;
+      const friendProfile = friendSnap.data() as UserProfile;
+
+      const q = query(
+        collection(db, 'chats'),
+        where('participants', 'array-contains', profile.uid)
+      );
+      const qSnap = await getDocs(q);
+      let foundChatId: string | null = null;
+      qSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.participants && data.participants.includes(friendUid) && !data.isGroup) {
+          foundChatId = docSnap.id;
+        }
+      });
+
+      if (foundChatId) {
+        setActiveChatId(foundChatId);
+        setActivePartner(friendProfile);
+      } else {
+        const newChatRef = doc(collection(db, 'chats'));
+        const newChatData = {
+          participants: [profile.uid, friendUid],
+          lastMessage: {
+            text: 'Established friendship connection',
+            timestamp: new Date(),
+            senderId: profile.uid
+          },
+          unreadCount: {
+            [profile.uid]: 0,
+            [friendUid]: 0
+          }
+        };
+        await setDoc(newChatRef, newChatData);
+        setActiveChatId(newChatRef.id);
+        setActivePartner(friendProfile);
+      }
+    } catch (e) {
+      console.error("Error opening chat with friend from URL:", e);
+    }
+  };
+
+  // Bidirectional URL Routing Sync
+  useEffect(() => {
+    const handleUrlRouting = async () => {
+      const path = window.location.pathname;
+      
+      if (!profile) {
+        if (path !== '/signinsignup') {
+          window.history.pushState(null, '', '/signinsignup');
+        }
+        return;
+      }
+
+      if (path === '/signinsignup') {
+        window.history.pushState(null, '', '/konnectmain');
+        setShowStories(false);
+        setShowGames(false);
+        setShowSettings(false);
+        setActiveChatId(null);
+        setActivePartner(null);
+      } else if (path === '/konnectmain') {
+        setShowStories(false);
+        setShowGames(false);
+        setShowSettings(false);
+        setActiveChatId(null);
+        setActivePartner(null);
+      } else if (path === '/stories') {
+        setShowStories(true);
+        setShowGames(false);
+        setShowSettings(false);
+      } else if (path === '/arcade') {
+        setShowStories(false);
+        setShowGames(true);
+        setShowSettings(false);
+      } else if (path === '/settings') {
+        setShowStories(false);
+        setShowGames(false);
+        setShowSettings(true);
+      } else if (path.startsWith('/chat/friends/')) {
+        const friendUid = path.split('/chat/friends/')[1];
+        if (friendUid && (!activePartner || activePartner.uid !== friendUid)) {
+          await openChatWithFriend(friendUid);
+        }
+      }
+    };
+
+    handleUrlRouting();
+    window.addEventListener('popstate', handleUrlRouting);
+    return () => window.removeEventListener('popstate', handleUrlRouting);
+  }, [profile, activePartner?.uid]);
+
+  useEffect(() => {
+    if (!profile) {
+      if (window.location.pathname !== '/signinsignup') {
+        window.history.pushState(null, '', '/signinsignup');
+      }
+      return;
+    }
+
+    let targetPath = '/konnectmain';
+    if (showStories) {
+      targetPath = '/stories';
+    } else if (showGames) {
+      targetPath = '/arcade';
+    } else if (showSettings) {
+      targetPath = '/settings';
+    } else if (activePartner && !activePartner.isGroup) {
+      targetPath = `/chat/friends/${activePartner.uid}`;
+    }
+
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+  }, [profile, showStories, showGames, showSettings, activePartner?.uid]);
 
   // Retrieve matching theme values
   const currentThemeId = profile?.theme || 'deep-dark';
@@ -198,6 +338,7 @@ export default function App() {
                 setActiveChatId(null);
                 setActivePartner(null);
               }}
+              profilesMap={profilesMap}
             />
           ) : (
             /* WELCOME DASHBOARD IN-APP */
@@ -239,7 +380,7 @@ export default function App() {
         {showStories && (
           <Stories 
             profile={profile}
-            friendIds={partnerUids}
+            friendIds={Object.keys(profilesMap).filter(uid => uid !== profile.uid)}
             onClose={() => setShowStories(false)}
           />
         )}
