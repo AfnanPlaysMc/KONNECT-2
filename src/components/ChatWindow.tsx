@@ -15,6 +15,12 @@ import { UserProfile, Message, STICKERS, LIST_OF_GAMES } from '../types';
 import { EMOJI_LIST } from '../emojis';
 import { SecureAvatar } from './SecureAvatar';
 
+declare global {
+  interface Window {
+    JitsiMeetExternalAPI: any;
+  }
+}
+
 interface ChatWindowProps {
   chatId: string;
   myProfile: UserProfile;
@@ -60,6 +66,59 @@ export default function ChatWindow({
   const [callTimer, setCallTimer] = useState(0);
   const callIntervalRef = useRef<any>(null);
   const callRingNode = useRef<any>(null);
+  const jitsiApiRef = useRef<any>(null);
+
+  // Initialize official Jitsi Meet External API when call is connected
+  useEffect(() => {
+    if (callSession?.status === 'connected' && callSession.roomId) {
+      const timer = setTimeout(() => {
+        const container = document.getElementById('jitsi-container');
+        if (container && window.JitsiMeetExternalAPI) {
+          if (jitsiApiRef.current) {
+            jitsiApiRef.current.dispose();
+            jitsiApiRef.current = null;
+          }
+          
+          try {
+            const domain = 'meet.jit.si';
+            const options = {
+              roomName: callSession.roomId,
+              width: '100%',
+              height: '100%',
+              parentNode: container,
+              configOverwrite: {
+                prejoinPageEnabled: false,
+                startWithVideoMuted: callSession.type === 'voice',
+                startWithAudioMuted: false,
+                disableDeepLinking: true,
+                enableWelcomePage: false,
+              },
+              interfaceConfigOverwrite: {
+                filmStripOnly: false,
+                SHOW_JITSI_WATERMARK: false,
+              }
+            };
+            jitsiApiRef.current = new window.JitsiMeetExternalAPI(domain, options);
+
+            // Handle hanging up inside Jitsi UI
+            jitsiApiRef.current.addEventListener('readyToClose', () => {
+              endCall();
+            });
+          } catch (e) {
+            console.error("Error starting Jitsi Meet External API:", e);
+          }
+        }
+      }, 300);
+
+      return () => {
+        clearTimeout(timer);
+        if (jitsiApiRef.current) {
+          jitsiApiRef.current.dispose();
+          jitsiApiRef.current = null;
+        }
+      };
+    }
+  }, [callSession?.status, callSession?.roomId, callSession?.type]);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -1176,25 +1235,9 @@ export default function ChatWindow({
               {/* Real Open-Source Calling Integration (Jitsi Meet iframe) */}
               {callSession.status === 'connected' && (
                 <div className="flex-1 my-4 flex flex-col justify-center min-h-[350px]">
-                  {callSession.type === 'video' ? (
-                    /* Real Video Feed */
-                    <div className="w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative">
-                      <iframe
-                        src={`https://meet.jit.si/${callSession.roomId}#config.prejoinPageEnabled=false&config.startWithVideoMuted=false&config.startWithAudioMuted=false&config.disableDeepLinking=true`}
-                        allow="camera; microphone; display-capture; autoplay; clipboard-write"
-                        className="w-full h-full border-0 rounded-2xl"
-                      />
-                    </div>
-                  ) : (
-                    /* Real Voice Feed with Hidden Frame + Voice Waveform HUD */
-                    <div className="w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative flex flex-col">
-                      <iframe
-                        src={`https://meet.jit.si/${callSession.roomId}#config.prejoinPageEnabled=false&config.startWithVideoMuted=true&config.startWithAudioMuted=false&config.disableDeepLinking=true`}
-                        allow="camera; microphone; autoplay; display-capture; clipboard-write"
-                        className="w-full h-full border-0 rounded-2xl"
-                      />
-                    </div>
-                  )}
+                  <div className="w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative">
+                    <div id="jitsi-container" className="w-full h-full min-h-[340px]" />
+                  </div>
                 </div>
               )}
 

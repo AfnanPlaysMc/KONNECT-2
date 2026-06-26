@@ -109,9 +109,55 @@ export default function App() {
     setProfile(updated);
   };
 
+  const navigateToDashboard = () => {
+    setShowStories(false);
+    setShowGames(false);
+    setShowSettings(false);
+    setActiveChatId(null);
+    setActivePartner(null);
+    if (window.location.pathname !== '/konnectmain') {
+      window.history.pushState(null, '', '/konnectmain');
+    }
+  };
+
+  const navigateToStories = () => {
+    setShowStories(true);
+    setShowGames(false);
+    setShowSettings(false);
+    if (window.location.pathname !== '/stories') {
+      window.history.pushState(null, '', '/stories');
+    }
+  };
+
+  const navigateToArcade = (gameId: string | null = null) => {
+    setInitialLaunchGameId(gameId);
+    setShowGames(true);
+    setShowStories(false);
+    setShowSettings(false);
+    if (window.location.pathname !== '/arcade') {
+      window.history.pushState(null, '', '/arcade');
+    }
+  };
+
+  const navigateToSettings = () => {
+    setShowSettings(true);
+    setShowStories(false);
+    setShowGames(false);
+    if (window.location.pathname !== '/settings') {
+      window.history.pushState(null, '', '/settings');
+    }
+  };
+
   const handleSelectChat = (chatId: string, partner: UserProfile) => {
     setActiveChatId(chatId);
     setActivePartner(partner);
+    setShowStories(false);
+    setShowGames(false);
+    setShowSettings(false);
+    const targetPath = `/chat/friends/${partner.uid}`;
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
   };
 
   const openChatWithFriend = async (friendUid: string) => {
@@ -137,6 +183,13 @@ export default function App() {
       if (foundChatId) {
         setActiveChatId(foundChatId);
         setActivePartner(friendProfile);
+        setShowStories(false);
+        setShowGames(false);
+        setShowSettings(false);
+        const targetPath = `/chat/friends/${friendUid}`;
+        if (window.location.pathname !== targetPath) {
+          window.history.pushState(null, '', targetPath);
+        }
       } else {
         const newChatRef = doc(collection(db, 'chats'));
         const newChatData = {
@@ -154,31 +207,32 @@ export default function App() {
         await setDoc(newChatRef, newChatData);
         setActiveChatId(newChatRef.id);
         setActivePartner(friendProfile);
+        setShowStories(false);
+        setShowGames(false);
+        setShowSettings(false);
+        const targetPath = `/chat/friends/${friendUid}`;
+        if (window.location.pathname !== targetPath) {
+          window.history.pushState(null, '', targetPath);
+        }
       }
     } catch (e) {
       console.error("Error opening chat with friend from URL:", e);
     }
   };
 
-  // Bidirectional URL Routing Sync
+  // Bidirectional URL Routing Sync (on Popstate / Mount only)
   useEffect(() => {
     const handleUrlRouting = async () => {
+      if (!profile) return;
       const path = window.location.pathname;
-      
-      if (!profile) {
-        if (path !== '/signinsignup') {
-          window.history.pushState(null, '', '/signinsignup');
-        }
-        return;
-      }
 
       if (path === '/signinsignup') {
-        window.history.pushState(null, '', '/konnectmain');
         setShowStories(false);
         setShowGames(false);
         setShowSettings(false);
         setActiveChatId(null);
         setActivePartner(null);
+        window.history.replaceState(null, '', '/konnectmain');
       } else if (path === '/konnectmain') {
         setShowStories(false);
         setShowGames(false);
@@ -205,34 +259,26 @@ export default function App() {
       }
     };
 
-    handleUrlRouting();
+    if (profile) {
+      handleUrlRouting();
+    }
+    
     window.addEventListener('popstate', handleUrlRouting);
     return () => window.removeEventListener('popstate', handleUrlRouting);
-  }, [profile, activePartner?.uid]);
+  }, [profile]);
 
   useEffect(() => {
+    if (loading) return;
     if (!profile) {
       if (window.location.pathname !== '/signinsignup') {
-        window.history.pushState(null, '', '/signinsignup');
+        window.history.replaceState(null, '', '/signinsignup');
       }
-      return;
+    } else {
+      if (window.location.pathname === '/signinsignup') {
+        window.history.replaceState(null, '', '/konnectmain');
+      }
     }
-
-    let targetPath = '/konnectmain';
-    if (showStories) {
-      targetPath = '/stories';
-    } else if (showGames) {
-      targetPath = '/arcade';
-    } else if (showSettings) {
-      targetPath = '/settings';
-    } else if (activePartner && !activePartner.isGroup) {
-      targetPath = `/chat/friends/${activePartner.uid}`;
-    }
-
-    if (window.location.pathname !== targetPath) {
-      window.history.pushState(null, '', targetPath);
-    }
-  }, [profile, showStories, showGames, showSettings, activePartner?.uid]);
+  }, [profile, loading]);
 
   // Retrieve matching theme values
   const currentThemeId = profile?.theme || 'deep-dark';
@@ -271,28 +317,28 @@ export default function App() {
           </div>
           <nav className="flex flex-col gap-6 flex-1 text-neutral-400">
             <button 
-              onClick={() => { setActiveChatId(null); setActivePartner(null); }}
+              onClick={navigateToDashboard}
               className={`p-3 rounded-xl cursor-pointer transition ${!activeChatId ? 'bg-neutral-800/60 text-blue-400' : 'hover:text-neutral-200'}`}
               title="Dashboard"
             >
               <MessageSquare className="w-5 h-5" />
             </button>
             <button 
-              onClick={() => setShowStories(true)}
+              onClick={navigateToStories}
               className="p-3 text-neutral-500 hover:text-neutral-300 cursor-pointer transition"
               title="Stories"
             >
               <Film className="w-5 h-5" />
             </button>
             <button 
-              onClick={() => { setInitialLaunchGameId(null); setShowGames(true); }}
+              onClick={() => navigateToArcade()}
               className="p-3 text-neutral-500 hover:text-neutral-300 cursor-pointer transition"
               title="Arcade"
             >
               <Gamepad2 className="w-5 h-5" />
             </button>
             <button 
-              onClick={() => setShowSettings(true)}
+              onClick={navigateToSettings}
               className="p-3 text-neutral-500 hover:text-neutral-300 cursor-pointer transition"
               title="Settings"
             >
@@ -300,7 +346,7 @@ export default function App() {
             </button>
           </nav>
           <div className="mt-auto">
-            <button onClick={() => setShowSettings(true)} className="w-10 h-10 rounded-full border-2 border-emerald-500 overflow-hidden bg-neutral-700 relative group transition hover:scale-105">
+            <button onClick={navigateToSettings} className="w-10 h-10 rounded-full border-2 border-emerald-500 overflow-hidden bg-neutral-700 relative group transition hover:scale-105">
               <img src={profile.photoURL} alt="pfp" className="w-full h-full object-cover" />
             </button>
           </div>
@@ -311,12 +357,9 @@ export default function App() {
           profile={profile}
           activeChatId={activeChatId}
           onSelectChat={handleSelectChat}
-          onOpenSettings={() => setShowSettings(true)}
-          onOpenStories={() => setShowStories(true)}
-          onOpenGames={() => {
-            setInitialLaunchGameId(null);
-            setShowGames(true);
-          }}
+          onOpenSettings={navigateToSettings}
+          onOpenStories={navigateToStories}
+          onOpenGames={() => navigateToArcade()}
         />
 
         {/* PRIMARY MAIN PANEL */}
@@ -326,18 +369,9 @@ export default function App() {
               chatId={activeChatId}
               myProfile={profile}
               partnerProfile={activePartner}
-              onOpenGames={() => {
-                setInitialLaunchGameId(null);
-                setShowGames(true);
-              }}
-              onSetGameChallenge={(gameId) => {
-                setInitialLaunchGameId(gameId);
-                setShowGames(true);
-              }}
-              onCloseChat={() => {
-                setActiveChatId(null);
-                setActivePartner(null);
-              }}
+              onOpenGames={() => navigateToArcade()}
+              onSetGameChallenge={(gameId) => navigateToArcade(gameId)}
+              onCloseChat={navigateToDashboard}
               profilesMap={profilesMap}
             />
           ) : (
