@@ -14,12 +14,102 @@ import { db } from '../firebase';
 import { UserProfile, Message, STICKERS, LIST_OF_GAMES } from '../types';
 import { EMOJI_LIST } from '../emojis';
 import { SecureAvatar } from './SecureAvatar';
+// @ts-ignore
+import fwc26TriondaEmoji from '../assets/images/fwc26_trionda_emoji_1782495872803.jpg';
+// @ts-ignore
+import fwcTrophyEmoji from '../assets/images/fwc_trophy_emoji_1782495891689.jpg';
 
 declare global {
   interface Window {
     JitsiMeetExternalAPI: any;
   }
 }
+
+// Custom 3D WhatsApp style Real Emoji renderer for FIFA World Cup 2026 soccer ball and trophy cup
+const renderMessageContent = (text: string) => {
+  const trimmed = text.trim();
+  if (trimmed === '⚽') {
+    return (
+      <div className="flex flex-col items-center py-2 cursor-pointer group select-none max-w-[240px] mx-auto text-center">
+        <div className="relative">
+          <img 
+            src={fwc26TriondaEmoji} 
+            alt="⚽ FIFA World Cup 2026 TRIONDA REAL EMOJI" 
+            className="w-28 h-28 object-cover rounded-3xl border-2 border-slate-700/50 shadow-2xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-6"
+          />
+          <span className="absolute -top-2 -right-2 bg-gradient-to-r from-yellow-400 to-amber-500 text-[9px] text-slate-950 px-2 py-0.5 rounded-full font-sans font-bold shadow-md animate-pulse">
+            TRIONDA
+          </span>
+        </div>
+        <span className="text-[9px] text-slate-400 mt-2 font-mono">
+          FIFA World Cup 2026™ Real Emoji
+        </span>
+      </div>
+    );
+  }
+  if (trimmed === '🏆') {
+    return (
+      <div className="flex flex-col items-center py-2 cursor-pointer group select-none max-w-[240px] mx-auto text-center">
+        <div className="relative">
+          <img 
+            src={fwcTrophyEmoji} 
+            alt="🏆 FIFA World Cup Trophy" 
+            className="w-28 h-28 object-cover rounded-3xl border-2 border-slate-700/50 shadow-2xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-6"
+          />
+          <span className="absolute -top-2 -right-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-[9px] text-white px-2 py-0.5 rounded-full font-sans font-bold shadow-md animate-pulse">
+            TROPHY
+          </span>
+        </div>
+        <span className="text-[9px] text-slate-400 mt-2 font-mono">
+          FIFA World Cup Trophy™ Real Emoji
+        </span>
+      </div>
+    );
+  }
+
+  // Parse inline emojis (⚽ and 🏆)
+  const regex = /(⚽|🏆)/g;
+  const parts = text.split(regex);
+  if (parts.length === 1) {
+    return <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap">{text}</p>;
+  }
+
+  return (
+    <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap flex flex-wrap items-center gap-1">
+      {parts.map((part, i) => {
+        if (part === '⚽') {
+          return (
+            <span key={i} className="inline-flex items-center group relative cursor-pointer mx-0.5">
+              <img 
+                src={fwc26TriondaEmoji} 
+                alt="⚽" 
+                className="w-5 h-5 object-cover rounded-md border border-slate-700 shadow-sm transition hover:scale-150 z-10"
+              />
+              <span className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-950 text-[8px] text-yellow-400 font-sans px-1.5 py-0.5 rounded border border-slate-800 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-20 pointer-events-none shadow-lg">
+                TRIONDA Real Emoji
+              </span>
+            </span>
+          );
+        }
+        if (part === '🏆') {
+          return (
+            <span key={i} className="inline-flex items-center group relative cursor-pointer mx-0.5">
+              <img 
+                src={fwcTrophyEmoji} 
+                alt="🏆" 
+                className="w-5 h-5 object-cover rounded-md border border-slate-700 shadow-sm transition hover:scale-150 z-10"
+              />
+              <span className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-950 text-[8px] text-indigo-400 font-sans px-1.5 py-0.5 rounded border border-slate-800 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-20 pointer-events-none shadow-lg">
+                FIFA Trophy Real Emoji
+              </span>
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </p>
+  );
+};
 
 interface ChatWindowProps {
   chatId: string;
@@ -874,9 +964,7 @@ export default function ChatWindow({
                     )}
 
                     {/* Standard text message */}
-                    {msg.type === 'text' && (
-                      <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap">{msg.text}</p>
-                    )}
+                    {msg.type === 'text' && renderMessageContent(msg.text)}
 
                     {/* Sticker image */}
                     {msg.type === 'sticker' && (
@@ -1065,16 +1153,28 @@ export default function ChatWindow({
             </div>
             
             <div className="grid grid-cols-8 gap-2 overflow-y-auto custom-scrollbar p-1 max-h-48">
-              {EMOJI_LIST.filter(emoji => !emojiSearch || emoji.name.includes(emojiSearch.toLowerCase())).map((e, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => { setInputText(prev => prev + e.emoji); setShowEmojis(false); setEmojiSearch(''); }}
-                  className="text-xl hover:scale-125 transition active:scale-90 p-1 flex items-center justify-center rounded-lg hover:bg-slate-900"
-                  title={e.name}
-                >
-                  {e.emoji}
-                </button>
-              ))}
+              {EMOJI_LIST.filter(emoji => !emojiSearch || emoji.name.includes(emojiSearch.toLowerCase())).map((e, idx) => {
+                const isRealEmoji = e.emoji === '⚽' || e.emoji === '🏆';
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => { setInputText(prev => prev + e.emoji); setShowEmojis(false); setEmojiSearch(''); }}
+                    className={`text-xl hover:scale-125 transition active:scale-90 p-1.5 flex items-center justify-center rounded-lg relative ${
+                      isRealEmoji 
+                        ? 'bg-amber-500/10 border border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.2)] hover:bg-amber-500/20' 
+                        : 'hover:bg-slate-900'
+                    }`}
+                    title={e.emoji === '⚽' ? "⚽ FIFA World Cup 2026 TRIONDA REAL EMOJI" : e.emoji === '🏆' ? "🏆 FIFA World Cup Trophy Real Emoji" : e.name}
+                  >
+                    {e.emoji}
+                    {isRealEmoji && (
+                      <span className="absolute -bottom-1 -right-1 text-[6px] bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 px-1 py-0.2 rounded font-sans font-extrabold shadow-sm scale-75 uppercase">
+                        3D
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
