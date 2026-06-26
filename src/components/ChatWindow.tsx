@@ -171,7 +171,7 @@ export default function ChatWindow({
           }
           
           try {
-            const domain = 'meet.ffmuc.net';
+            const domain = 'meet.jit.si';
             const options = {
               roomName: callSession.roomId,
               width: '100%',
@@ -189,6 +189,12 @@ export default function ChatWindow({
                 logoImageUrl: '',
                 logoWidth: 0,
                 logoHeight: 0,
+                requireDisplayName: false,
+                enableClosePage: false,
+                disableModeratorIndicator: true,
+                chromeExtensionBanner: {
+                  preventShow: true
+                }
               },
               interfaceConfigOverwrite: {
                 filmStripOnly: false,
@@ -197,6 +203,8 @@ export default function ChatWindow({
                 SHOW_WATERMARK_FOR_GUESTS: false,
                 SHOW_CHROME_EXTENSION_BANNER: false,
                 DEFAULT_BACKGROUND: '#090e17',
+                JITSI_WATERMARK_LINK: '',
+                BRAND_WATERMARK_LINK: ''
               },
               userInfo: {
                 displayName: myProfile.displayName,
