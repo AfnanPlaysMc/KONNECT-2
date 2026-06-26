@@ -3,7 +3,7 @@ import {
   Phone, Video, MoreVertical, Send, Smile, Play, Pause, RefreshCw, 
   Smile as EmojiIcon, ShieldAlert, BadgeHelp, EyeOff, Film, Ban,
   Volume2, Mic, Check, CheckCheck, Gamepad2, Sparkles, Image, Zap, Flame, User, X,
-  Plus, ArrowLeft, Search, PhoneOff, Settings as SettingsIcon, Crown, UserPlus, UserMinus
+  Plus, ArrowLeft, Search, PhoneOff, Settings as SettingsIcon, Crown, UserPlus, UserMinus, Maximize2, Minimize2
 } from 'lucide-react';
 import { 
   collection, query, orderBy, onSnapshot, addDoc, updateDoc, 
@@ -154,6 +154,7 @@ export default function ChatWindow({
   // Calling states
   const [callSession, setCallSession] = useState<{ id: string; type: 'voice' | 'video'; status: 'ringing' | 'connected' | 'ended'; roomId?: string; callerId?: string; receiverId?: string } | null>(null);
   const [callTimer, setCallTimer] = useState(0);
+  const [isCallFullscreen, setIsCallFullscreen] = useState(false);
   const callIntervalRef = useRef<any>(null);
   const callRingNode = useRef<any>(null);
   const jitsiApiRef = useRef<any>(null);
@@ -170,7 +171,7 @@ export default function ChatWindow({
           }
           
           try {
-            const domain = 'meet.jit.si';
+            const domain = 'meet.ffmuc.net';
             const options = {
               roomName: callSession.roomId,
               width: '100%',
@@ -182,10 +183,25 @@ export default function ChatWindow({
                 startWithAudioMuted: false,
                 disableDeepLinking: true,
                 enableWelcomePage: false,
+                hideWatermark: true,
+                hideLobbyButton: true,
+                logoClickUrl: '',
+                logoImageUrl: '',
+                logoWidth: 0,
+                logoHeight: 0,
               },
               interfaceConfigOverwrite: {
                 filmStripOnly: false,
                 SHOW_JITSI_WATERMARK: false,
+                SHOW_BRAND_WATERMARK: false,
+                SHOW_WATERMARK_FOR_GUESTS: false,
+                SHOW_CHROME_EXTENSION_BANNER: false,
+                DEFAULT_BACKGROUND: '#090e17',
+              },
+              userInfo: {
+                displayName: myProfile.displayName,
+                email: myProfile.username + '@konnect.com',
+                avatarUrl: myProfile.photoURL
               }
             };
             jitsiApiRef.current = new window.JitsiMeetExternalAPI(domain, options);
@@ -1151,6 +1167,40 @@ export default function ChatWindow({
                 className="w-full px-3 py-1.5 bg-[#0e121a] border border-slate-900 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
               />
             </div>
+
+            {/* Featured 3D WhatsApp Real Emojis Section */}
+            {!emojiSearch && (
+              <div className="mb-3 p-2 bg-gradient-to-r from-emerald-950/20 to-indigo-950/20 rounded-xl border border-slate-800/60 flex-shrink-0">
+                <div className="flex items-center justify-between mb-1.5 px-1">
+                  <span className="text-[10px] font-bold text-emerald-400 font-sans tracking-wide">✨ Featured 3D WhatsApp Emojis</span>
+                  <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest font-bold">Real stickers</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setInputText(prev => prev + '⚽'); setShowEmojis(false); }}
+                    className="flex-1 flex items-center gap-2 p-1.5 bg-[#0c1017]/80 hover:bg-[#0c1017] rounded-xl border border-slate-800 hover:border-emerald-500/40 transition active:scale-95 group text-left"
+                    title="FIFA World Cup 2026 TRIONDA REAL EMOJI"
+                  >
+                    <img src={fwc26TriondaEmoji} alt="⚽" className="w-7 h-7 object-cover rounded-lg shadow-md group-hover:scale-110 transition" />
+                    <div>
+                      <h6 className="text-[10px] font-bold text-white leading-tight">World Cup 2026</h6>
+                      <p className="text-[8px] text-slate-500 font-mono mt-0.5">⚽ Ball Emoji</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => { setInputText(prev => prev + '🏆'); setShowEmojis(false); }}
+                    className="flex-1 flex items-center gap-2 p-1.5 bg-[#0c1017]/80 hover:bg-[#0c1017] rounded-xl border border-slate-800 hover:border-indigo-500/40 transition active:scale-95 group text-left"
+                    title="FIFA World Cup Trophy Real Emoji"
+                  >
+                    <img src={fwcTrophyEmoji} alt="🏆" className="w-7 h-7 object-cover rounded-lg shadow-md group-hover:scale-110 transition" />
+                    <div>
+                      <h6 className="text-[10px] font-bold text-white leading-tight">World Cup Trophy</h6>
+                      <p className="text-[8px] text-slate-500 font-mono mt-0.5">🏆 Trophy Emoji</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
             
             <div className="grid grid-cols-8 gap-2 overflow-y-auto custom-scrollbar p-1 max-h-48">
               {EMOJI_LIST.filter(emoji => !emojiSearch || emoji.name.includes(emojiSearch.toLowerCase())).map((e, idx) => {
@@ -1334,9 +1384,30 @@ export default function ChatWindow({
 
               {/* Real Open-Source Calling Integration (Jitsi Meet iframe) */}
               {callSession.status === 'connected' && (
-                <div className="flex-1 my-4 flex flex-col justify-center min-h-[350px]">
-                  <div className="w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative">
-                    <div id="jitsi-container" className="w-full h-full min-h-[340px]" />
+                <div className={`my-4 flex flex-col justify-center transition-all duration-300 ${isCallFullscreen ? 'fixed inset-0 z-[100] bg-[#07090e] p-2 md:p-4 w-screen h-screen' : 'flex-1 min-h-[350px]'}`}>
+                  <div className="w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative flex flex-col">
+                    <div id="jitsi-container" className="w-full h-full flex-1 min-h-[340px]" />
+                    
+                    {/* Fullscreen Control Overlay */}
+                    <div className="absolute top-4 right-4 z-20 flex gap-2">
+                      <button
+                        onClick={() => setIsCallFullscreen(!isCallFullscreen)}
+                        className="px-3 py-1.5 bg-slate-950/80 hover:bg-slate-900 border border-slate-800/60 rounded-xl text-white shadow-lg transition active:scale-95 flex items-center gap-1.5 text-[10px] font-bold font-sans backdrop-blur-sm hover:border-indigo-500/30"
+                        title={isCallFullscreen ? "Exit Fullscreen" : "Fullscreen Call"}
+                      >
+                        {isCallFullscreen ? (
+                          <>
+                            <Minimize2 className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Exit Fullscreen</span>
+                          </>
+                        ) : (
+                          <>
+                            <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Fullscreen</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

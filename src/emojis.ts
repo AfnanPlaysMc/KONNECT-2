@@ -5,6 +5,9 @@ export interface EmojiItem {
 }
 
 export const EMOJI_LIST: EmojiItem[] = [
+  // Featured Emojis
+  { emoji: "⚽", name: "soccer ball football fifa world cup 2026 trionda", category: "featured" },
+  { emoji: "🏆", name: "trophy cup winner gold champion award", category: "featured" },
   // Fruits & Vegetables
   { emoji: "🍏", name: "green apple", category: "food" },
   { emoji: "🍎", name: "red apple", category: "food" },

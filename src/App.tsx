@@ -25,6 +25,7 @@ export default function App() {
   const [initialLaunchGameId, setInitialLaunchGameId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [hasRoutedOnMount, setHasRoutedOnMount] = useState(false);
 
   // Authenticated state listener
   useEffect(() => {
@@ -220,25 +221,17 @@ export default function App() {
     }
   };
 
-  // Bidirectional URL Routing Sync (on Popstate / Mount only)
+  // 1. Initial Mount/Load Routing (Runs exactly once when profile is loaded)
   useEffect(() => {
-    const handleUrlRouting = async () => {
-      if (!profile) return;
-      const path = window.location.pathname;
+    if (!profile || hasRoutedOnMount) return;
 
-      if (path === '/signinsignup') {
-        setShowStories(false);
-        setShowGames(false);
-        setShowSettings(false);
-        setActiveChatId(null);
-        setActivePartner(null);
-        window.history.replaceState(null, '', '/konnectmain');
-      } else if (path === '/konnectmain') {
-        setShowStories(false);
-        setShowGames(false);
-        setShowSettings(false);
-        setActiveChatId(null);
-        setActivePartner(null);
+    const handleInitialRouting = async () => {
+      const path = window.location.pathname;
+      if (path.startsWith('/chat/friends/')) {
+        const friendUid = path.split('/chat/friends/')[1];
+        if (friendUid) {
+          await openChatWithFriend(friendUid);
+        }
       } else if (path === '/stories') {
         setShowStories(true);
         setShowGames(false);
@@ -251,20 +244,58 @@ export default function App() {
         setShowStories(false);
         setShowGames(false);
         setShowSettings(true);
+      } else if (path === '/signinsignup') {
+        window.history.replaceState(null, '', '/konnectmain');
+      }
+      setHasRoutedOnMount(true);
+    };
+
+    handleInitialRouting();
+  }, [profile, hasRoutedOnMount]);
+
+  // 2. Browser Navigation Popstate Listener (Synchronizes React states on Back/Forward buttons)
+  useEffect(() => {
+    if (!profile) return;
+
+    const handlePopstateRouting = async () => {
+      const path = window.location.pathname;
+
+      if (path === '/konnectmain' || path === '/' || path === '/signinsignup') {
+        setShowStories(false);
+        setShowGames(false);
+        setShowSettings(false);
+        setActiveChatId(null);
+        setActivePartner(null);
+      } else if (path === '/stories') {
+        setShowStories(true);
+        setShowGames(false);
+        setShowSettings(false);
+        setActiveChatId(null);
+        setActivePartner(null);
+      } else if (path === '/arcade') {
+        setShowStories(false);
+        setShowGames(true);
+        setShowSettings(false);
+        setActiveChatId(null);
+        setActivePartner(null);
+      } else if (path === '/settings') {
+        setShowStories(false);
+        setShowGames(false);
+        setShowSettings(true);
+        setActiveChatId(null);
+        setActivePartner(null);
       } else if (path.startsWith('/chat/friends/')) {
         const friendUid = path.split('/chat/friends/')[1];
-        if (friendUid && (!activePartner || activePartner.uid !== friendUid)) {
+        if (friendUid) {
           await openChatWithFriend(friendUid);
         }
       }
     };
 
-    if (profile) {
-      handleUrlRouting();
-    }
-    
-    window.addEventListener('popstate', handleUrlRouting);
-    return () => window.removeEventListener('popstate', handleUrlRouting);
+    window.addEventListener('popstate', handlePopstateRouting);
+    return () => {
+      window.removeEventListener('popstate', handlePopstateRouting);
+    };
   }, [profile]);
 
   useEffect(() => {
