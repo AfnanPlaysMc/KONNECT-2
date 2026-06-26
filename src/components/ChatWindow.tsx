@@ -154,7 +154,6 @@ export default function ChatWindow({
   // Calling states
   const [callSession, setCallSession] = useState<{ id: string; type: 'voice' | 'video'; status: 'ringing' | 'connected' | 'ended'; roomId?: string; callerId?: string; receiverId?: string } | null>(null);
   const [callTimer, setCallTimer] = useState(0);
-  const [isCallFullscreen, setIsCallFullscreen] = useState(false);
   const callIntervalRef = useRef<any>(null);
   const callRingNode = useRef<any>(null);
   const jitsiApiRef = useRef<any>(null);
@@ -171,7 +170,8 @@ export default function ChatWindow({
           }
           
           try {
-            const domain = 'meet.jit.si';
+            // Using vc.init7.net, an official high-speed Swiss Jitsi public server that is 100% free, unlimited, and does not require host login/moderator authentication.
+            const domain = 'vc.init7.net';
             const options = {
               roomName: callSession.roomId,
               width: '100%',
@@ -186,13 +186,24 @@ export default function ChatWindow({
                 hideLobbyButton: true,
                 requireDisplayName: false,
                 enableClosePage: false,
+                hideWatermark: true,
+                disableModeratorIndicator: true,
                 chromeExtensionBanner: {
                   preventShow: true
-                }
+                },
+                logoClickUrl: '',
+                logoImageUrl: '',
+                logoWidth: 0,
+                logoHeight: 0
               },
               interfaceConfigOverwrite: {
                 filmStripOnly: false,
                 DEFAULT_BACKGROUND: '#090e17',
+                SHOW_JITSI_WATERMARK: false,
+                SHOW_BRAND_WATERMARK: false,
+                SHOW_WATERMARK_FOR_GUESTS: false,
+                JITSI_WATERMARK_LINK: '',
+                BRAND_WATERMARK_LINK: ''
               },
               userInfo: {
                 displayName: myProfile.displayName,
@@ -1380,30 +1391,9 @@ export default function ChatWindow({
 
               {/* Real Open-Source Calling Integration (Jitsi Meet iframe) */}
               {callSession.status === 'connected' && (
-                <div className={`my-4 flex flex-col justify-center transition-all duration-300 ${isCallFullscreen ? 'fixed inset-0 z-[100] bg-[#07090e] p-2 md:p-4 w-screen h-screen' : 'flex-1 min-h-[350px]'}`}>
+                <div className="my-4 flex flex-col justify-center flex-1 min-h-[350px]">
                   <div className="w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative flex flex-col">
                     <div id="jitsi-container" className="w-full h-full flex-1 min-h-[340px]" />
-                    
-                    {/* Fullscreen Control Overlay */}
-                    <div className="absolute top-4 right-4 z-20 flex gap-2">
-                      <button
-                        onClick={() => setIsCallFullscreen(!isCallFullscreen)}
-                        className="px-3 py-1.5 bg-slate-950/80 hover:bg-slate-900 border border-slate-800/60 rounded-xl text-white shadow-lg transition active:scale-95 flex items-center gap-1.5 text-[10px] font-bold font-sans backdrop-blur-sm hover:border-indigo-500/30"
-                        title={isCallFullscreen ? "Exit Fullscreen" : "Fullscreen Call"}
-                      >
-                        {isCallFullscreen ? (
-                          <>
-                            <Minimize2 className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Exit Fullscreen</span>
-                          </>
-                        ) : (
-                          <>
-                            <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Fullscreen</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
                   </div>
                 </div>
               )}
