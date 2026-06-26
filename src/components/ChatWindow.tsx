@@ -183,28 +183,16 @@ export default function ChatWindow({
                 startWithAudioMuted: false,
                 disableDeepLinking: true,
                 enableWelcomePage: false,
-                hideWatermark: true,
                 hideLobbyButton: true,
-                logoClickUrl: '',
-                logoImageUrl: '',
-                logoWidth: 0,
-                logoHeight: 0,
                 requireDisplayName: false,
                 enableClosePage: false,
-                disableModeratorIndicator: true,
                 chromeExtensionBanner: {
                   preventShow: true
                 }
               },
               interfaceConfigOverwrite: {
                 filmStripOnly: false,
-                SHOW_JITSI_WATERMARK: false,
-                SHOW_BRAND_WATERMARK: false,
-                SHOW_WATERMARK_FOR_GUESTS: false,
-                SHOW_CHROME_EXTENSION_BANNER: false,
                 DEFAULT_BACKGROUND: '#090e17',
-                JITSI_WATERMARK_LINK: '',
-                BRAND_WATERMARK_LINK: ''
               },
               userInfo: {
                 displayName: myProfile.displayName,
