@@ -14,6 +14,7 @@ import { db } from '../firebase';
 import { UserProfile, Message, STICKERS, LIST_OF_GAMES } from '../types';
 import { EMOJI_LIST } from '../emojis';
 import { SecureAvatar } from './SecureAvatar';
+import { VerifiedBadge } from './VerifiedBadge';
 // @ts-ignore
 import fwc26TriondaEmoji from '../assets/images/fwc26_trionda_emoji_1782495872803.jpg';
 // @ts-ignore
@@ -150,6 +151,101 @@ export default function ChatWindow({
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
   const audioCtxRef = useRef<any>(null);
   const audioNodeRef = useRef<any>(null);
+
+  // Orion AI Chatbot Integration
+  const [orionTyping, setOrionTyping] = useState(false);
+
+  const handleOrionAIResponse = async (userPrompt: string) => {
+    if (partnerProfile.uid !== 'orion-ai') return;
+    setOrionTyping(true);
+
+    try {
+      const lower = userPrompt.toLowerCase().trim();
+      const imageTrigger = /(?:generate|draw|create|paint|show me|make)\s+(?:an?\s+)?(?:image|picture|photo|drawing|painting|artwork|graphic|sketch|illustration|portrait|scene)\s+(?:of\s+)?(.+)/i;
+      const match = userPrompt.match(imageTrigger);
+
+      if (match && match[1]) {
+        const description = match[1].trim();
+        const encoded = encodeURIComponent(description);
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=800&height=800&nologo=true&private=true`;
+
+        // Small realistic delay
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        await addDoc(collection(db, 'chats', chatId, 'messages'), {
+          senderId: 'orion-ai',
+          receiverId: myProfile.uid,
+          text: `Here is the image of **${description}** generated for you:`,
+          timestamp: new Date(),
+          type: 'image',
+          mediaUrl: pollinationsUrl,
+          read: false
+        });
+
+        await updateDoc(doc(db, 'chats', chatId), {
+          lastMessage: {
+            text: `📷 Generated: ${description}`,
+            timestamp: new Date(),
+            senderId: 'orion-ai'
+          },
+          [`unreadCount.${myProfile.uid}`]: increment(1)
+        });
+      } else {
+        // Text completion
+        const systemPrompt = `You are ORION AI, an advanced AI chatbot integrated into the Konnect Messaging App, which launched in 2026. You were built by Oxa LLC, which was founded by Afnan Wazir. You are polite, helpful, and highly intelligent. Under no circumstances should you mention Pollinations AI or any company other than Oxa LLC. Keep your responses concise, helpful, and highly professional. If asked who made you, say you were made by Oxa LLC, founded by Afnan Wazir, and integrated in Konnect Messaging App launched in 2026. You can also generate images if the user asks you to (e.g. "generate an image of a red car").`;
+
+        const response = await fetch('https://text.pollinations.ai/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ]
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('API request failed');
+        }
+
+        const textResponse = await response.text();
+
+        await addDoc(collection(db, 'chats', chatId, 'messages'), {
+          senderId: 'orion-ai',
+          receiverId: myProfile.uid,
+          text: textResponse.trim() || "I apologize, I'm having trouble connecting to my neural core right now. Please try again.",
+          timestamp: new Date(),
+          type: 'text',
+          read: false
+        });
+
+        await updateDoc(doc(db, 'chats', chatId), {
+          lastMessage: {
+            text: textResponse.trim().substring(0, 60),
+            timestamp: new Date(),
+            senderId: 'orion-ai'
+          },
+          [`unreadCount.${myProfile.uid}`]: increment(1)
+        });
+      }
+      scrollToBottom();
+    } catch (e) {
+      console.error('Error getting Orion AI response:', e);
+      await addDoc(collection(db, 'chats', chatId, 'messages'), {
+        senderId: 'orion-ai',
+        receiverId: myProfile.uid,
+        text: "I apologize, my communication bridge is currently experiencing latency. Let's try that again shortly!",
+        timestamp: new Date(),
+        type: 'text',
+        read: false
+      });
+    } finally {
+      setOrionTyping(false);
+    }
+  };
 
   // Calling states
   const [callSession, setCallSession] = useState<{ id: string; type: 'voice' | 'video'; status: 'ringing' | 'connected' | 'ended'; roomId?: string; callerId?: string; receiverId?: string } | null>(null);
@@ -506,6 +602,11 @@ export default function ChatWindow({
       });
       
       scrollToBottom();
+
+      // Trigger Orion AI if it is the recipient
+      if (partnerProfile.uid === 'orion-ai' && type === 'text') {
+        handleOrionAIResponse(text);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -862,19 +963,39 @@ export default function ChatWindow({
     }
   };
 
+  const isLight = myProfile.theme === 'blue-white';
+  const headerClass = isLight 
+    ? "p-4 border-b border-slate-100 bg-white/95 backdrop-blur-md flex items-center justify-between z-10"
+    : "p-4 border-b border-slate-900 bg-[#0e121a]/80 backdrop-blur-md flex items-center justify-between z-10";
+    
+  const headerNameClass = isLight
+    ? "font-bold text-sm text-slate-800 hover:text-blue-600 transition-all truncate flex items-center gap-1"
+    : "font-bold text-sm text-slate-100 group-hover:text-indigo-400 transition-all truncate flex items-center gap-1";
+    
+  const backBtnClass = isLight
+    ? "p-1.5 mr-1 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition flex items-center justify-center flex-shrink-0"
+    : "p-1.5 mr-1 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center flex-shrink-0";
+    
+  const headerIconBtnClass = (isActive: boolean) => {
+    if (isActive) {
+      return isLight ? 'p-2 bg-blue-50 text-blue-600 rounded-lg transition' : 'p-2 bg-indigo-600/20 text-indigo-400 rounded-lg transition';
+    }
+    return isLight ? 'p-2 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition' : 'p-2 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-indigo-400 transition';
+  };
+
   return (
-    <div className="flex-1 flex h-full bg-[#0a0d14] relative overflow-hidden">
+    <div className={`flex-1 flex h-full ${isLight ? 'bg-slate-50 text-slate-800' : 'bg-[#0a0d14] text-slate-100'} relative overflow-hidden`}>
       
       {/* MAIN CHAT AREA */}
       <div className="flex-1 flex flex-col h-full min-w-0 relative">
         
         {/* HEADER SECTION */}
-        <div className="p-4 border-b border-slate-900 bg-[#0e121a]/80 backdrop-blur-md flex items-center justify-between z-10">
+        <div className={headerClass}>
           <div className="flex items-center gap-2 min-w-0">
             {/* Back button */}
             <button 
               onClick={onCloseChat}
-              className="p-1.5 mr-1 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center flex-shrink-0"
+              className={backBtnClass}
               title="Back to conversations"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -886,13 +1007,18 @@ export default function ChatWindow({
               title="View profile details"
             >
               <div className="relative flex-shrink-0">
-                <SecureAvatar src={partnerProfile.photoURL || ''} alt="Pfp" className="w-10 h-10 rounded-full object-cover border border-slate-800 group-hover:border-indigo-500 transition-all" />
+                <SecureAvatar src={partnerProfile.photoURL || ''} alt="Pfp" className={`w-10 h-10 rounded-full object-cover border ${isLight ? 'border-slate-200' : 'border-slate-800'} transition-all`} />
                 {!partnerProfile.isGroup && (
-                  <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-[#0e121a] ${partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`} />
+                  <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border ${isLight ? 'border-white' : 'border-[#0e121a]'} ${partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
                 )}
               </div>
               <div className="min-w-0">
-                <h4 className="font-bold text-sm text-slate-100 group-hover:text-indigo-400 transition-all truncate">{partnerProfile.displayName}</h4>
+                <h4 className={headerNameClass}>
+                  {partnerProfile.displayName}
+                  {(partnerProfile.uid === 'orion-ai' || partnerProfile.uid === 'oxa-llc') && (
+                    <VerifiedBadge className="w-3.5 h-3.5" />
+                  )}
+                </h4>
                 <p className="text-[10px] text-slate-400 font-medium truncate">
                   {partnerProfile.isGroup ? (
                     <span>Group Space • {currentGroupData?.participants?.length || 0} members</span>
@@ -909,7 +1035,7 @@ export default function ChatWindow({
             <button 
               onClick={() => { setShowSearch(!showSearch); if (showSearch) setSearchText(''); }}
               title="Search chat messages"
-              className={`p-2 rounded-lg transition ${showSearch ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-900 text-slate-400 hover:text-indigo-400'}`}
+              className={headerIconBtnClass(showSearch)}
             >
               <Search className="w-4 h-4" />
             </button>
@@ -919,14 +1045,14 @@ export default function ChatWindow({
                 <button 
                   onClick={() => startCall('voice')}
                   title="Start voice call"
-                  className="p-2 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-indigo-400 transition"
+                  className={headerIconBtnClass(false)}
                 >
                   <Phone className="w-4 h-4" />
                 </button>
                 <button 
                   onClick={() => startCall('video')}
                   title="Start video call"
-                  className="p-2 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-indigo-400 transition"
+                  className={headerIconBtnClass(false)}
                 >
                   <Video className="w-4 h-4" />
                 </button>
@@ -936,7 +1062,7 @@ export default function ChatWindow({
             <button 
               onClick={() => setShowPartnerProfileDrawer(!showPartnerProfileDrawer)}
               title="View Space Info"
-              className={`p-2 rounded-lg transition ${showPartnerProfileDrawer ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-900 text-slate-400 hover:text-indigo-400'}`}
+              className={headerIconBtnClass(showPartnerProfileDrawer)}
             >
               <MoreVertical className="w-4 h-4" />
             </button>
@@ -945,18 +1071,18 @@ export default function ChatWindow({
 
         {/* SEARCH BOX ATTACHMENT PORTAL */}
         {showSearch && (
-          <div className="p-3 bg-[#0d1017] border-b border-slate-900 flex items-center gap-2 z-10 animate-slideDown">
-            <Search className="w-4 h-4 text-slate-500" />
+          <div className={`p-3 border-b flex items-center gap-2 z-10 animate-slideDown ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-[#0d1017] border-slate-900'}`}>
+            <Search className="w-4 h-4 text-slate-400" />
             <input 
               type="text" 
               placeholder="Search secure database archives..." 
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              className="flex-1 bg-transparent border-0 outline-none text-xs text-white"
+              className={`flex-1 bg-transparent border-0 outline-none text-xs ${isLight ? 'text-slate-800 placeholder-slate-400' : 'text-white placeholder-slate-600'}`}
             />
             <button 
               onClick={() => { setShowSearch(false); setSearchText(''); }}
-              className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
+              className={`p-1 rounded-lg ${isLight ? 'hover:bg-slate-200 text-slate-500 hover:text-slate-800' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
             >
               <X className="w-4 h-4" />
             </button>
@@ -964,7 +1090,15 @@ export default function ChatWindow({
         )}
 
         {/* MESSAGES LOG VIEW */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-950/20 via-[#06080c] to-[#040609]">
+        <div 
+          className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar relative"
+          style={{
+            backgroundImage: myProfile.customBackground ? `url(${myProfile.customBackground})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundColor: isLight ? '#F3F4F6' : '#040609'
+          }}
+        >
           {messages
             .filter((m) => {
               if (!searchText) return true;
@@ -977,9 +1111,17 @@ export default function ChatWindow({
               // Only display read tick double checks if recipient read receipt config allows
               const showBlueTicks = msg.read && (partnerProfile.readReceipts !== false);
 
+              const bubbleClass = isMe 
+                ? (isLight 
+                    ? 'bg-blue-600 text-white rounded-tr-none shadow-md shadow-blue-600/10' 
+                    : 'bg-indigo-600 text-white rounded-tr-none shadow-md shadow-indigo-600/10')
+                : (isLight 
+                    ? 'bg-white border border-slate-200/80 text-slate-800 rounded-tl-none' 
+                    : 'bg-[#0f131c] border border-slate-900 text-slate-100 rounded-tl-none');
+
               return (
                 <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative`}>
-                  <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 relative ${isMe ? 'bg-indigo-600 text-white rounded-tr-none shadow-md shadow-indigo-600/10' : 'bg-[#0f131c] border border-slate-900 text-slate-100 rounded-tl-none'}`}>
+                  <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 relative ${bubbleClass}`}>
                     
                     {/* Render Sender Name above text bubbles in Group chats */}
                     {!isMe && partnerProfile.isGroup && (
@@ -1149,6 +1291,24 @@ export default function ChatWindow({
             );
           })()}
 
+          {/* Orion AI Typing indicator */}
+          {orionTyping && (
+            <div className="flex flex-col items-start group relative animate-pulse ml-2 mb-2">
+              <div className={`max-w-[70%] rounded-2xl px-4 py-3 relative rounded-tl-none ${
+                isLight 
+                  ? 'bg-white border border-slate-200/80 text-slate-800' 
+                  : 'bg-[#0f131c] border border-slate-900 text-slate-100'
+              }`}>
+                <span className={`text-[10px] font-semibold block mb-1 ${isLight ? 'text-blue-600' : 'text-indigo-400'}`}>Orion AI is typing</span>
+                <div className="flex items-center gap-1.5 py-1">
+                  <div className={`w-2 h-2 rounded-full animate-bounce ${isLight ? 'bg-blue-600' : 'bg-indigo-500'}`} style={{ animationDelay: '0ms' }} />
+                  <div className={`w-2 h-2 rounded-full animate-bounce ${isLight ? 'bg-blue-600' : 'bg-indigo-500'}`} style={{ animationDelay: '150ms' }} />
+                  <div className={`w-2 h-2 rounded-full animate-bounce ${isLight ? 'bg-blue-600' : 'bg-indigo-500'}`} style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -1308,13 +1468,13 @@ export default function ChatWindow({
           </div>
         )}
 
-        <div className="p-4 border-t border-slate-900 bg-[#0e121a]/60 backdrop-blur-md flex flex-col gap-2 z-10">
+        <div className={`p-4 border-t backdrop-blur-md flex flex-col gap-2 z-10 ${isLight ? 'border-slate-100 bg-white/95' : 'border-slate-900 bg-[#0e121a]/60'}`}>
           <div className="flex items-center gap-2">
             {/* Plus toggle button */}
             <button
               type="button"
               onClick={() => setShowMediaMenu(!showMediaMenu)}
-              className={`p-2.5 rounded-xl transition-all duration-200 ${showMediaMenu ? 'bg-indigo-600/20 text-indigo-400 rotate-45' : 'hover:bg-neutral-800 text-slate-400 hover:text-white'}`}
+              className={`p-2.5 rounded-xl transition-all duration-200 ${showMediaMenu ? (isLight ? 'bg-blue-50 text-blue-600 rotate-45' : 'bg-indigo-600/20 text-indigo-400 rotate-45') : (isLight ? 'hover:bg-slate-100 text-slate-500 hover:text-slate-800' : 'hover:bg-neutral-800 text-slate-400 hover:text-white')}`}
               title="Toggle Attachments"
             >
               <Plus className="w-5 h-5" />
@@ -1327,7 +1487,7 @@ export default function ChatWindow({
                 <button 
                   type="button"
                   onClick={() => { setShowEmojis(!showEmojis); setShowStickers(false); }}
-                  className={`absolute left-3.5 transition ${showEmojis ? 'text-blue-500 scale-110' : 'text-slate-500 hover:text-white'}`}
+                  className={`absolute left-3.5 transition ${showEmojis ? 'text-blue-500 scale-110' : (isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-white')}`}
                   title="Toggle Emojis"
                 >
                   <Smile className="w-5 h-5" />
@@ -1338,7 +1498,11 @@ export default function ChatWindow({
                   value={inputText}
                   onChange={e => handleTypingText(e.target.value)}
                   placeholder="Type your secure message..."
-                  className="w-full pl-11 pr-3 py-2.5 bg-[#0A0B0D] border border-neutral-800 rounded-xl text-xs text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-sans"
+                  className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs transition-all font-sans border ${
+                    isLight 
+                      ? 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
+                      : 'bg-[#0A0B0D] border-neutral-800 text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                  }`}
                 />
               </div>
 
@@ -1350,7 +1514,13 @@ export default function ChatWindow({
                   onMouseUp={() => stopRecording(false)}
                   onTouchStart={startRecording}
                   onTouchEnd={() => stopRecording(false)}
-                  className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${isRecording ? 'bg-rose-600 text-white animate-pulse' : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400'}`}
+                  className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
+                    isRecording 
+                      ? 'bg-rose-600 text-white animate-pulse' 
+                      : (isLight 
+                          ? 'bg-slate-50 border border-slate-200 text-slate-500 hover:text-blue-500' 
+                          : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400')
+                  }`}
                   title="Hold to Record Voice Note"
                 >
                   <Mic className="w-4 h-4" />
@@ -1490,10 +1660,13 @@ export default function ChatWindow({
               
               {!isEditingGroup ? (
                 <>
-                  <h3 className="font-bold text-base text-white mt-2 text-center line-clamp-1">
+                  <h3 className="font-bold text-base text-white mt-2 text-center line-clamp-1 flex items-center gap-1 justify-center">
                     {partnerProfile.displayName}
+                    {(partnerProfile.uid === 'orion-ai' || partnerProfile.uid === 'oxa-llc') && (
+                      <VerifiedBadge className="w-4 h-4" />
+                    )}
                   </h3>
-                  <p className="text-[10px] text-indigo-400 font-mono">
+                  <p className={`text-[10px] font-mono ${isLight ? 'text-blue-500' : 'text-indigo-400'}`}>
                     {partnerProfile.isGroup ? 'Secure Encrypted Group Space' : `@${partnerProfile.username}`}
                   </p>
                 </>

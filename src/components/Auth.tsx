@@ -9,7 +9,8 @@ import {
 import { doc, getDoc, setDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile, THEMES } from '../types';
-import { MessageSquare, Shield, Key, Mail, Phone, ArrowRight, User, Check, Flame, Upload } from 'lucide-react';
+import { Shield, Key, Mail, Phone, ArrowRight, User, Check, Flame, Upload } from 'lucide-react';
+import { AppLogo } from './AppLogo';
 
 interface AuthProps {
   onAuthSuccess: (profile: UserProfile) => void;
@@ -197,7 +198,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         blockedUsers: [],
         closeFriends: [],
         customList: [],
-        theme: 'deep-dark',
+        theme: 'blue-white',
         stealthMode: false,
         readReceipts: true,
         notificationSounds: {},
@@ -245,8 +246,8 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       <div className="relative w-full max-w-lg bg-[#0e121a] border border-slate-800/80 rounded-2xl p-8 shadow-2xl overflow-hidden">
         {/* Top Header Logo */}
         <div className="flex flex-col items-center mb-8 text-center">
-          <div className="p-3 bg-gradient-to-tr from-indigo-500 to-fuchsia-500 rounded-xl mb-3 shadow-lg shadow-indigo-500/20">
-            <MessageSquare className="w-8 h-8 text-white animate-pulse" />
+          <div className="p-2.5 bg-blue-600/10 rounded-2xl mb-3 shadow-lg shadow-blue-500/10 border border-blue-500/20">
+            <AppLogo className="w-12 h-12" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white bg-clip-text text-transparent bg-gradient-to-r from-indigo-200 via-slate-100 to-fuchsia-200">
             {onboarding ? 'Complete Your Profile' : 'Konnect'}

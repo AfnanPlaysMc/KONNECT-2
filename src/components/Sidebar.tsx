@@ -3,6 +3,8 @@ import {
   Search, Plus, Settings as SettingsIcon, Film, Gamepad2, QrCode, 
   LogOut, UserPlus, Check, X, Bell, Moon, Sun, ShieldAlert, BadgeHelp, CheckCheck
 } from 'lucide-react';
+import { AppLogo } from './AppLogo';
+import { VerifiedBadge } from './VerifiedBadge';
 import { 
   collection, query, where, getDocs, doc, setDoc, onSnapshot, 
   getDoc, addDoc, updateDoc, serverTimestamp, orderBy
@@ -278,19 +280,42 @@ export default function Sidebar({
     c.partner.username.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const isLight = profile.theme === 'blue-white';
+  const themeClasses = {
+    wrapper: isLight ? `w-full sm:w-80 border-r border-slate-200 bg-white flex flex-col h-full text-slate-800 select-none flex-shrink-0 ${activeChatId ? 'hidden sm:flex' : 'flex'}` : `w-full sm:w-80 border-r border-neutral-800 bg-[#0E1013] flex flex-col h-full text-slate-100 select-none flex-shrink-0 ${activeChatId ? 'hidden sm:flex' : 'flex'}`,
+    header: isLight ? 'p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between' : 'p-4 border-b border-neutral-800 bg-neutral-900/10 flex items-center justify-between',
+    headerText: isLight ? 'font-bold text-sm text-slate-800 line-clamp-1' : 'font-bold text-sm text-slate-200 line-clamp-1',
+    usernameText: isLight ? 'text-[10px] font-mono text-slate-400' : 'text-[10px] font-mono text-slate-500',
+    iconBtn: isLight ? 'p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-800 transition' : 'p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition',
+    inputBg: isLight ? 'w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono shadow-sm' : 'w-full pl-9 pr-4 py-2 bg-slate-900/60 border border-slate-900 rounded-xl text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono',
+    quickLaunch: isLight ? 'p-3 border-b border-slate-100 bg-slate-50 grid grid-cols-2 gap-2' : 'p-3 border-b border-slate-900 bg-slate-950/20 grid grid-cols-2 gap-2',
+    quickBtn: isLight ? 'flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition group shadow-sm' : 'flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-slate-900/30 border border-slate-900 hover:border-slate-800 hover:bg-slate-900/50 transition group',
+    quickText: isLight ? 'text-[9px] font-bold text-slate-500 uppercase tracking-wider font-mono' : 'text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono',
+    conversationsTitle: isLight ? 'px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest text-slate-400 font-mono' : 'px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest text-slate-500 font-mono',
+    chatItem: (isActive: boolean) => {
+      if (isActive) {
+        return isLight ? 'bg-blue-500/10 border-l-2 border-l-blue-600 border-b border-slate-100' : 'bg-indigo-600/10 border-l-2 border-l-indigo-500 border-b border-slate-900/40';
+      }
+      return isLight ? 'hover:bg-slate-50 border-b border-slate-100' : 'hover:bg-slate-900/30 border-b border-slate-900/40';
+    },
+    chatPartnerName: isLight ? 'font-bold text-xs text-slate-800 flex items-center gap-0.5' : 'font-bold text-xs text-slate-200 flex items-center gap-0.5',
+    chatLastMsg: isLight ? 'text-[10px] text-slate-500 line-clamp-1 mt-0.5 max-w-[150px]' : 'text-[10px] text-slate-400 line-clamp-1 mt-0.5 max-w-[150px]',
+    chatTime: isLight ? 'text-[9px] text-slate-400 font-mono' : 'text-[9px] text-slate-500 font-mono'
+  };
+
   return (
-    <div className={`w-full sm:w-80 border-r border-neutral-800 bg-[#0E1013] flex flex-col h-full text-slate-100 select-none flex-shrink-0 ${activeChatId ? 'hidden sm:flex' : 'flex'}`}>
+    <div className={themeClasses.wrapper}>
       
       {/* USER PROFILE CARD HEADER */}
-      <div className="p-4 border-b border-neutral-800 bg-neutral-900/10 flex items-center justify-between">
+      <div className={themeClasses.header}>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <img src={profile.photoURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover border border-slate-800" />
-            <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#0c1017] ${profile.stealthMode ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+            <img src={profile.photoURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover border border-slate-300" />
+            <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${profile.stealthMode ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
           </div>
           <div>
-            <h3 className="font-bold text-sm text-slate-200 line-clamp-1">{profile.displayName}</h3>
-            <p className="text-[10px] font-mono text-slate-500">@{profile.username}</p>
+            <h3 className={themeClasses.headerText}>{profile.displayName}</h3>
+            <p className={themeClasses.usernameText}>@{profile.username}</p>
           </div>
         </div>
 
@@ -298,14 +323,14 @@ export default function Sidebar({
           <button 
             onClick={() => setShowQR(true)}
             title="My QR Code"
-            className="p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition"
+            className={themeClasses.iconBtn}
           >
             <QrCode className="w-4 h-4" />
           </button>
           <button 
             onClick={onOpenSettings}
             title="Settings"
-            className="p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition"
+            className={themeClasses.iconBtn}
           >
             <SettingsIcon className="w-4 h-4" />
           </button>
@@ -313,34 +338,34 @@ export default function Sidebar({
       </div>
 
       {/* QUICK LAUNCH TOOLS */}
-      <div className="p-3 border-b border-slate-900 bg-slate-950/20 grid grid-cols-2 gap-2">
+      <div className={themeClasses.quickLaunch}>
         <button 
           onClick={onOpenStories}
-          className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-slate-900/30 border border-slate-900 hover:border-slate-800 hover:bg-slate-900/50 transition group"
+          className={themeClasses.quickBtn}
         >
-          <Film className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition" />
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Stories</span>
+          <Film className="w-4 h-4 text-blue-500 group-hover:scale-110 transition" />
+          <span className={themeClasses.quickText}>Stories</span>
         </button>
 
         <button 
           onClick={() => setShowAddFriend(true)}
-          className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-slate-900/30 border border-slate-900 hover:border-slate-800 hover:bg-slate-900/50 transition group"
+          className={themeClasses.quickBtn}
         >
-          <UserPlus className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition" />
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Add Friend</span>
+          <UserPlus className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition" />
+          <span className={themeClasses.quickText}>Add Friend</span>
         </button>
       </div>
 
       {/* SEARCH BAR */}
       <div className="p-3">
         <div className="relative">
-          <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-500" />
+          <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
           <input 
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search channels, aliases..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-900/60 border border-slate-900 rounded-xl text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+            className={themeClasses.inputBg}
           />
         </div>
       </div>
@@ -350,16 +375,16 @@ export default function Sidebar({
         {/* INCOMING FRIEND REQUESTS */}
         {incomingRequests.length > 0 && (
           <div className="px-3 mb-4">
-            <h4 className="px-1 py-1.5 text-[9px] uppercase font-bold tracking-widest text-indigo-400 font-mono flex items-center gap-1.5">
-              <Bell className="w-3.5 h-3.5 text-indigo-400 animate-pulse" /> Friend Requests ({incomingRequests.length})
+            <h4 className="px-1 py-1.5 text-[9px] uppercase font-bold tracking-widest text-blue-500 font-mono flex items-center gap-1.5">
+              <Bell className="w-3.5 h-3.5 text-blue-500 animate-pulse" /> Friend Requests ({incomingRequests.length})
             </h4>
             <div className="space-y-2">
               {incomingRequests.map((req) => (
-                <div key={req.id} className="p-2.5 bg-indigo-950/20 border border-indigo-900/40 rounded-xl flex items-center justify-between gap-2">
+                <div key={req.id} className="p-2.5 bg-blue-500/5 border border-slate-200 rounded-xl flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <img src={req.fromPhotoURL} alt={req.fromUsername} className="w-8 h-8 rounded-full object-cover border border-indigo-900/30" />
+                    <img src={req.fromPhotoURL} alt={req.fromUsername} className="w-8 h-8 rounded-full object-cover border border-slate-200" />
                     <div>
-                      <p className="text-[10px] font-bold text-slate-200 line-clamp-1">{req.fromDisplayName}</p>
+                      <p className="text-[10px] font-bold text-slate-800 line-clamp-1">{req.fromDisplayName}</p>
                       <p className="text-[9px] text-slate-400 font-mono">@{req.fromUsername}</p>
                     </div>
                   </div>
@@ -385,10 +410,10 @@ export default function Sidebar({
           </div>
         )}
 
-        <h4 className="px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest text-slate-500 font-mono">Conversations</h4>
+        <h4 className={themeClasses.conversationsTitle}>Conversations</h4>
         
         {filteredChats.length === 0 ? (
-          <div className="text-center py-10 text-slate-600 px-4">
+          <div className="text-center py-10 text-slate-400 px-4">
             <span className="block text-2xl mb-1">💬</span>
             <p className="text-[10px]">No chats found. Add friends using their handle username or scan their QR code to begin.</p>
           </div>
@@ -405,23 +430,28 @@ export default function Sidebar({
               <div
                 key={chat.id}
                 onClick={() => onSelectChat(chat.id, chat.partner)}
-                className={`flex items-center justify-between p-3.5 border-b border-slate-900/40 cursor-pointer transition relative ${isActive ? 'bg-indigo-600/10 border-l-2 border-l-indigo-500' : 'hover:bg-slate-900/30'}`}
+                className={`flex items-center justify-between p-3.5 cursor-pointer transition relative ${themeClasses.chatItem(isActive)}`}
               >
                 <div className="flex items-center gap-3">
                   <div className="relative flex-shrink-0">
-                    <img src={chat.partner.photoURL} alt={chat.partner.displayName} className="w-10 h-10 rounded-full object-cover border border-slate-800" />
-                    <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-[#0c1017] ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`} />
+                    <img src={chat.partner.photoURL} alt={chat.partner.displayName} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
+                    <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
                   </div>
                   <div>
-                    <h5 className="font-bold text-xs text-slate-200">{chat.partner.displayName}</h5>
-                    <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5 max-w-[150px]">{lastMsgText}</p>
+                    <h5 className={themeClasses.chatPartnerName}>
+                      {chat.partner.displayName}
+                      {(chat.partner.uid === 'orion-ai' || chat.partner.uid === 'oxa-llc') && (
+                        <VerifiedBadge className="w-3.5 h-3.5" />
+                      )}
+                    </h5>
+                    <p className={themeClasses.chatLastMsg}>{lastMsgText}</p>
                   </div>
                 </div>
 
                 <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                  <span className="text-[9px] text-slate-500 font-mono">{lastMsgTime}</span>
+                  <span className={themeClasses.chatTime}>{lastMsgTime}</span>
                   {chat.unread > 0 && (
-                    <span className="w-4 h-4 bg-indigo-600 text-[9px] font-bold text-white rounded-full flex items-center justify-center animate-bounce">
+                    <span className="w-4 h-4 bg-blue-600 text-[9px] font-bold text-white rounded-full flex items-center justify-center animate-bounce">
                       {chat.unread}
                     </span>
                   )}
@@ -433,9 +463,12 @@ export default function Sidebar({
       </div>
 
       {/* LOGOUT TRAIL */}
-      <div className="p-3.5 border-t border-neutral-800 bg-[#0E1013] flex flex-col gap-2">
+      <div className="p-3.5 border-t border-neutral-800 bg-[#0E1013]/40 flex flex-col gap-2">
         <div className="flex items-center justify-between text-[10px] text-neutral-500 font-mono">
-          <span>Konnect Premium v2.4</span>
+          <div className="flex items-center gap-1">
+            <AppLogo className="w-4 h-4" />
+            <span>Konnect Beta 2026</span>
+          </div>
           <button 
             onClick={() => signOut(auth)}
             className="flex items-center gap-1 hover:text-rose-400 transition font-bold"
@@ -443,8 +476,8 @@ export default function Sidebar({
             <LogOut className="w-3.5 h-3.5" /> Sign Out
           </button>
         </div>
-        <div className="text-[9px] text-neutral-600 font-bold tracking-widest text-center uppercase border-t border-neutral-800/40 pt-2.5 font-mono">
-          KONNECT BY OXA LLC
+        <div className="text-[9px] text-neutral-600 font-bold tracking-widest text-center uppercase border-t border-neutral-800/20 pt-2.5 font-mono">
+          DEVELOPED BY OXA LLC • AFNAN WAZIR
         </div>
       </div>
 

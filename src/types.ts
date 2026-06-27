@@ -11,7 +11,8 @@ export interface UserProfile {
   blockedUsers: string[]; // List of uids blocked by this user
   closeFriends: string[]; // List of uids in close friends
   customList: string[]; // List of uids in custom stories list
-  theme: string; // 'deep-dark' | 'amoled' | 'midnight-blue' | 'emerald' | 'crimson-velvet' | 'cyberpunk'
+  theme: string; // 'blue-white' | 'deep-dark' | 'amoled' | 'midnight-blue' | 'emerald' | 'crimson-velvet' | 'cyberpunk'
+  customBackground?: string;
   stealthMode: boolean; // Hide online status
   readReceipts: boolean; // Send/receive blue double ticks
   notificationSounds: Record<string, string>; // userId -> soundId ('default' | 'chime' | 'glass' | 'pop' | 'retro' | 'synth')
@@ -101,6 +102,7 @@ export const LIST_OF_GAMES: MiniGame[] = [
 ];
 
 export const THEMES = [
+  { id: 'blue-white', name: 'Blue & White', bg: 'bg-[#F3F4F6]', border: 'border-slate-200', text: 'text-slate-800', card: 'bg-white', primary: 'bg-blue-600', accent: 'text-blue-500' },
   { id: 'high-density', name: 'High Density', bg: 'bg-[#0A0B0D]', border: 'border-neutral-800', text: 'text-[#E4E6EB]', card: 'bg-[#0E1013]', primary: 'bg-blue-600', accent: 'text-blue-500' },
   { id: 'deep-dark', name: 'Deep Onyx', bg: 'bg-[#0A0B0D]', border: 'border-neutral-800', text: 'text-[#E4E6EB]', card: 'bg-[#0E1013]', primary: 'bg-blue-600', accent: 'text-blue-500' },
   { id: 'amoled', name: 'Pure AMOLED', bg: 'bg-[#000000]', border: 'border-[#121212]', text: 'text-[#f8fafc]', card: 'bg-[#0a0a0a]', primary: 'bg-[#ffffff]', accent: 'text-white' },

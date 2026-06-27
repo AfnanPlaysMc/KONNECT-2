@@ -148,6 +148,17 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
     }
   };
 
+  const updateCustomBackground = async (bgUrl: string | null) => {
+    const updated = { ...profile, customBackground: bgUrl || '' };
+    try {
+      await updateDoc(doc(db, 'profiles', profile.uid), { customBackground: bgUrl || '' });
+      onUpdateProfile(updated);
+      setMessage(bgUrl ? 'Custom background wallpaper applied!' : 'Wallpaper reset to standard preset.');
+    } catch (e) {
+      setError('Failed to update background wallpaper');
+    }
+  };
+
   const toggleStealth = async () => {
     const next = !stealthMode;
     setStealthMode(next);
@@ -468,25 +479,94 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
 
             {/* TAB: THEMES */}
             {activeTab === 'theme' && (
-              <div className="grid grid-cols-2 gap-3">
-                {THEMES.map((th) => (
-                  <button
-                    key={th.id}
-                    onClick={() => selectTheme(th.id)}
-                    className={`p-4 rounded-2xl text-left border relative overflow-hidden transition-all duration-200 hover:scale-[1.02] ${th.bg} ${profile.theme === th.id ? 'border-slate-100 ring-2 ring-indigo-500/40' : 'border-slate-800/80 hover:border-slate-700'}`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`font-bold text-xs ${th.text}`}>{th.name}</span>
-                      {profile.theme === th.id && (
-                        <span className="p-0.5 bg-indigo-500 text-white rounded-full"><Check className="w-3 h-3" /></span>
-                      )}
-                    </div>
-                    <div className="flex gap-1">
-                      <div className="w-4 h-4 rounded bg-slate-900 border border-slate-800" />
-                      <div className={`w-4 h-4 rounded ${th.primary}`} />
-                    </div>
-                  </button>
-                ))}
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-2.5 font-mono">Select Theme Preset</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    {THEMES.map((th) => (
+                      <button
+                        key={th.id}
+                        type="button"
+                        onClick={() => selectTheme(th.id)}
+                        className={`p-4 rounded-2xl text-left border relative overflow-hidden transition-all duration-200 hover:scale-[1.02] ${th.bg} ${profile.theme === th.id ? 'border-indigo-500 ring-2 ring-indigo-500/40' : 'border-slate-800/80 hover:border-slate-700'}`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`font-bold text-xs ${th.id === 'blue-white' ? 'text-slate-800' : 'text-slate-200'}`}>{th.name}</span>
+                          {profile.theme === th.id && (
+                            <span className="p-0.5 bg-indigo-500 text-white rounded-full flex items-center justify-center w-4 h-4"><Check className="w-2.5 h-2.5" /></span>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <div className="w-4 h-4 rounded bg-slate-900 border border-slate-800" />
+                          <div className={`w-4 h-4 rounded ${th.primary}`} />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-800/60 pt-4">
+                  <h4 className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1 font-mono">Custom Background Wallpaper</h4>
+                  <p className="text-[10px] text-slate-500 mb-3.5 leading-relaxed">Choose an background image or upload your own to personalize your Konnect app background.</p>
+                  
+                  {/* Preset Wallpaper Options */}
+                  <div className="grid grid-cols-4 gap-2 mb-4">
+                    {[
+                      { name: 'Sleek Silk', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000' },
+                      { name: 'Abstract Blue', url: 'https://images.unsplash.com/photo-1557683316-973673baf926?w=1000' },
+                      { name: 'Pastel Marble', url: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=1000' },
+                      { name: 'Cosmic Nebula', url: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?w=1000' }
+                    ].map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => updateCustomBackground(preset.url)}
+                        className={`group relative h-14 rounded-xl overflow-hidden border transition ${profile.customBackground === preset.url ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-800/80 hover:border-slate-700'}`}
+                        title={preset.name}
+                      >
+                        <img src={preset.url} alt={preset.name} className="w-full h-full object-cover group-hover:scale-105 transition" />
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <span className="text-[8px] font-bold text-white uppercase text-center font-mono leading-tight px-1">{preset.name}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Upload Custom & Reset buttons */}
+                  <div className="flex gap-2.5">
+                    <label className="flex-1 py-2 px-3 bg-slate-950/60 hover:bg-slate-900 border border-slate-800 rounded-xl text-slate-300 hover:text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer">
+                      <Upload className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Upload Wallpaper</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              if (reader.result) {
+                                updateCustomBackground(reader.result as string);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }} 
+                      />
+                    </label>
+
+                    {profile.customBackground && (
+                      <button
+                        type="button"
+                        onClick={() => updateCustomBackground(null)}
+                        className="py-2 px-4 bg-rose-950/20 hover:bg-rose-900 border border-rose-900/40 text-rose-400 hover:text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1"
+                      >
+                        Reset Background
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
