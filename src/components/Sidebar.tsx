@@ -12,6 +12,7 @@ import {
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { UserProfile, THEMES } from '../types';
+import { SafeAdSenseAd } from './SafeAdSenseAd';
 
 interface SidebarProps {
   profile: UserProfile;
@@ -42,17 +43,6 @@ export default function Sidebar({
   const [showQR, setShowQR] = useState(false);
   const [qrCodeInput, setQrCodeInput] = useState('');
   const [qrMessage, setQrMessage] = useState('');
-
-  // Google AdSense auto-pusher initialization
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-      }
-    } catch (e) {
-      console.warn("Sidebar AdSense push handled:", e);
-    }
-  }, []);
 
   // Read incoming friend requests
   useEffect(() => {
@@ -540,16 +530,16 @@ export default function Sidebar({
       </div>
 
       {/* Subtle, non-disturbing Google Ad Unit */}
-      <div className={`mx-3 my-1 p-1.5 rounded-xl border flex flex-col items-center justify-center bg-black/[0.01] dark:bg-white/[0.01] ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
-        <span className="text-[7px] font-mono tracking-widest text-slate-500 uppercase mb-0.5">Sponsored</span>
-        <div className="w-full overflow-hidden flex items-center justify-center min-h-[50px] max-h-[50px] text-[10px] text-slate-400">
-          <ins className="adsbygoogle"
-               style={{ display: 'block', width: '100%', height: '50px' }}
-               data-ad-client="ca-pub-8435369808017114"
-               data-ad-slot="8435369808"
-               data-ad-format="horizontal"
-               data-full-width-responsive="false"></ins>
-        </div>
+      <div className={`mx-3 my-1 p-1 flex flex-col items-center justify-center bg-black/[0.01] dark:bg-white/[0.01] ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
+        <span className="text-[7px] font-mono tracking-widest text-slate-500 uppercase mb-0.5">Sponsored Space</span>
+        <SafeAdSenseAd 
+          client="ca-pub-8435369808017114"
+          slot="8435369808"
+          style={{ display: 'block', width: '100%', height: '50px' }}
+          format="horizontal"
+          responsive="false"
+          className="min-h-[50px] max-h-[50px]"
+        />
       </div>
 
       {/* LOGOUT TRAIL */}
