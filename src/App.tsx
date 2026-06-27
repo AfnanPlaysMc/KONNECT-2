@@ -112,6 +112,41 @@ export default function App() {
         ];
 
         for (const bot of bots) {
+          if (bot.uid === 'orion-ai') {
+            // Seed Orion AI locally instead of Firestore
+            const localChatKey = `konnect_local_chat_orion-ai_${profile.uid}`;
+            const localMsgsKey = `konnect_local_messages_orion-ai_${profile.uid}`;
+            if (!localStorage.getItem(localChatKey)) {
+              localStorage.setItem(localChatKey, JSON.stringify({
+                id: `orion-ai-chat-${profile.uid}`,
+                participants: [profile.uid, 'orion-ai'],
+                lastMessage: {
+                  text: bot.welcomeMessage,
+                  timestamp: new Date().toISOString(),
+                  senderId: 'orion-ai'
+                },
+                unreadCount: {
+                  [profile.uid]: 0,
+                  'orion-ai': 0
+                }
+              }));
+            }
+            if (!localStorage.getItem(localMsgsKey)) {
+              localStorage.setItem(localMsgsKey, JSON.stringify([
+                {
+                  id: `welcome-${Date.now()}`,
+                  senderId: 'orion-ai',
+                  receiverId: profile.uid,
+                  text: bot.welcomeMessage,
+                  timestamp: new Date().toISOString(),
+                  type: 'text',
+                  read: true
+                }
+              ]));
+            }
+            continue; // Skip Firestore seeding for orion-ai
+          }
+
           // 1. Ensure profile document exists
           const botProfileRef = doc(db, 'profiles', bot.uid);
           const botProfileSnap = await getDoc(botProfileRef);
@@ -277,6 +312,28 @@ export default function App() {
 
   const openChatWithFriend = async (friendUid: string) => {
     if (!profile) return;
+    if (friendUid === 'orion-ai') {
+      setActiveChatId(`orion-ai-chat-${profile.uid}`);
+      setActivePartner({
+        uid: 'orion-ai',
+        displayName: 'Orion AI',
+        username: 'orion_ai',
+        photoURL: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
+        bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
+        status: 'online',
+        theme: 'deep-dark'
+      } as UserProfile);
+      setShowStories(false);
+      setShowGames(false);
+      setShowSettings(false);
+      setMobileMenuOpen(false);
+      const targetPath = `/chat/friends/orion-ai`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState(null, '', targetPath);
+      }
+      return;
+    }
+
     try {
       const friendSnap = await getDoc(doc(db, 'profiles', friendUid));
       if (!friendSnap.exists()) return;

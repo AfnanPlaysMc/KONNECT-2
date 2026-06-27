@@ -152,7 +152,59 @@ export default function Sidebar({
         }
       }
 
-      setChats(chatsList);
+      // Load local Orion AI chat
+      const localChatKey = `konnect_local_chat_orion-ai_${profile.uid}`;
+      const storedLocalOrion = localStorage.getItem(localChatKey);
+      let localOrionChat: any = null;
+      if (storedLocalOrion) {
+        try {
+          const parsed = JSON.parse(storedLocalOrion);
+          localOrionChat = {
+            id: parsed.id || `orion-ai-chat-${profile.uid}`,
+            partner: {
+              uid: 'orion-ai',
+              displayName: 'Orion AI',
+              username: 'orion_ai',
+              photoURL: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
+              bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
+              status: 'online',
+              theme: 'deep-dark'
+            },
+            lastMessage: parsed.lastMessage ? {
+              ...parsed.lastMessage,
+              timestamp: parsed.lastMessage.timestamp ? new Date(parsed.lastMessage.timestamp) : new Date()
+            } : null,
+            unread: parsed.unreadCount?.[profile.uid] || 0
+          };
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (!localOrionChat) {
+        localOrionChat = {
+          id: `orion-ai-chat-${profile.uid}`,
+          partner: {
+            uid: 'orion-ai',
+            displayName: 'Orion AI',
+            username: 'orion_ai',
+            photoURL: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
+            bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
+            status: 'online',
+            theme: 'deep-dark'
+          },
+          lastMessage: {
+            text: "Hello! I am Orion AI, your E2EE intelligent assistant. Type any secure query or prompt and I will decode it right away.",
+            timestamp: new Date(),
+            senderId: 'orion-ai'
+          },
+          unread: 0
+        };
+      }
+
+      const filteredChats = chatsList.filter((c) => c.partner.uid !== 'orion-ai');
+
+      setChats([localOrionChat, ...filteredChats]);
     }, (error) => {
       console.warn("Chats onSnapshot handled error:", error);
     });

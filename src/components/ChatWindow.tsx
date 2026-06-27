@@ -140,6 +140,24 @@ export default function ChatWindow({
   const [showSearch, setShowSearch] = useState(false);
   const [searchText, setSearchText] = useState('');
   
+  const [showMediaGrid, setShowMediaGrid] = useState(false);
+  const [selectedLightboxImage, setSelectedLightboxImage] = useState<string | null>(null);
+  
+  // Custom chat backgrounds ("option for more stuff")
+  const [chatWallpaper, setChatWallpaper] = useState<string>(() => {
+    return localStorage.getItem(`wallpaper_${chatId}`) || 'default';
+  });
+
+  // Sound preset
+  const [chatSoundPreset, setChatSoundPreset] = useState<string>(() => {
+    return localStorage.getItem(`sound_preset_${chatId}`) || 'synth';
+  });
+
+  // Auto-replier simulated state
+  const [autoReplierActive, setAutoReplierActive] = useState<boolean>(() => {
+    return localStorage.getItem(`autoreplier_${chatId}`) === 'true';
+  });
+  
   // Voice note state
   const [isRecording, setIsRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
@@ -172,6 +190,55 @@ export default function ChatWindow({
     if (partnerProfile.uid !== 'orion-ai') return;
     setOrionTyping(true);
 
+    const localMsgsKey = `konnect_local_messages_orion-ai_${myProfile.uid}`;
+    const localChatKey = `konnect_local_chat_orion-ai_${myProfile.uid}`;
+
+    const saveLocalMessageAndChat = (replyText: string, replyType: Message['type'], mediaUrl?: string) => {
+      const replyMsg = {
+        id: `msg-orion-${Date.now()}`,
+        senderId: 'orion-ai',
+        receiverId: myProfile.uid,
+        text: replyText,
+        timestamp: new Date().toISOString(),
+        type: replyType,
+        read: false,
+        ...(mediaUrl ? { mediaUrl } : {})
+      };
+
+      const storedMsgs = localStorage.getItem(localMsgsKey);
+      let list = [];
+      if (storedMsgs) {
+        try {
+          list = JSON.parse(storedMsgs);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      list.push(replyMsg);
+      localStorage.setItem(localMsgsKey, JSON.stringify(list));
+      
+      const formatted = list.map((m: any) => ({
+        ...m,
+        timestamp: m.timestamp ? { toDate: () => new Date(m.timestamp) } : null
+      }));
+      setMessages(formatted);
+      scrollToBottom();
+
+      localStorage.setItem(localChatKey, JSON.stringify({
+        id: `orion-ai-chat-${myProfile.uid}`,
+        participants: [myProfile.uid, 'orion-ai'],
+        lastMessage: {
+          text: replyType === 'image' ? `📷 Generated image of ${replyText}` : replyText.substring(0, 60),
+          timestamp: new Date().toISOString(),
+          senderId: 'orion-ai'
+        },
+        unreadCount: {
+          [myProfile.uid]: 0,
+          'orion-ai': 0
+        }
+      }));
+    };
+
     try {
       const lower = userPrompt.toLowerCase().trim();
       const imageTrigger = /(?:generate|draw|create|paint|show me|make)\s+(?:an?\s+)?(?:image|picture|photo|drawing|painting|artwork|graphic|sketch|illustration|portrait|scene)\s+(?:of\s+)?(.+)/i;
@@ -185,24 +252,7 @@ export default function ChatWindow({
         // Small realistic delay
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        await addDoc(collection(db, 'chats', chatId, 'messages'), {
-          senderId: 'orion-ai',
-          receiverId: myProfile.uid,
-          text: `Here is the image of **${description}** generated for you:`,
-          timestamp: new Date(),
-          type: 'image',
-          mediaUrl: pollinationsUrl,
-          read: false
-        });
-
-        await updateDoc(doc(db, 'chats', chatId), {
-          lastMessage: {
-            text: `📷 Generated: ${description}`,
-            timestamp: new Date(),
-            senderId: 'orion-ai'
-          },
-          [`unreadCount.${myProfile.uid}`]: increment(1)
-        });
+        saveLocalMessageAndChat(description, 'image', pollinationsUrl);
       } else {
         // Text completion
         const systemPrompt = `You are ORION AI, an advanced AI chatbot integrated into the Konnect Messaging App, which launched in 2026. You were built by Oxa LLC, which was founded by Afnan Wazir. You are polite, helpful, and highly intelligent. Under no circumstances should you mention Pollinations AI or any company other than Oxa LLC. Keep your responses concise, helpful, and highly professional. If asked who made you, say you were made by Oxa LLC, founded by Afnan Wazir, and integrated in Konnect Messaging App launched in 2026. You can also generate images if the user asks you to (e.g. "generate an image of a red car").`;
@@ -225,36 +275,12 @@ export default function ChatWindow({
         }
 
         const textResponse = await response.text();
-
-        await addDoc(collection(db, 'chats', chatId, 'messages'), {
-          senderId: 'orion-ai',
-          receiverId: myProfile.uid,
-          text: textResponse.trim() || "I apologize, I'm having trouble connecting to my neural core right now. Please try again.",
-          timestamp: new Date(),
-          type: 'text',
-          read: false
-        });
-
-        await updateDoc(doc(db, 'chats', chatId), {
-          lastMessage: {
-            text: textResponse.trim().substring(0, 60),
-            timestamp: new Date(),
-            senderId: 'orion-ai'
-          },
-          [`unreadCount.${myProfile.uid}`]: increment(1)
-        });
+        saveLocalMessageAndChat(textResponse.trim() || "I apologize, I'm having trouble connecting to my neural core right now. Please try again.", 'text');
       }
       scrollToBottom();
     } catch (e) {
       console.error('Error getting Orion AI response:', e);
-      await addDoc(collection(db, 'chats', chatId, 'messages'), {
-        senderId: 'orion-ai',
-        receiverId: myProfile.uid,
-        text: "I apologize, my communication bridge is currently experiencing latency. Let's try that again shortly!",
-        timestamp: new Date(),
-        type: 'text',
-        read: false
-      });
+      saveLocalMessageAndChat("I apologize, my communication bridge is currently experiencing latency. Let's try that again shortly!", 'text');
     } finally {
       setOrionTyping(false);
     }
@@ -362,6 +388,38 @@ export default function ChatWindow({
 
   // Read messages and update read receipts
   useEffect(() => {
+    if (partnerProfile.uid === 'orion-ai') {
+      const localMsgsKey = `konnect_local_messages_orion-ai_${myProfile.uid}`;
+      const loadLocalMessages = () => {
+        const stored = localStorage.getItem(localMsgsKey);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            const formatted = parsed.map((m: any) => ({
+              ...m,
+              timestamp: m.timestamp ? { toDate: () => new Date(m.timestamp) } : null
+            }));
+            setMessages(formatted);
+          } catch (e) {
+            console.error(e);
+          }
+        } else {
+          setMessages([]);
+        }
+        scrollToBottom();
+      };
+      
+      loadLocalMessages();
+      
+      window.addEventListener('storage', loadLocalMessages);
+      const interval = setInterval(loadLocalMessages, 1000);
+      
+      return () => {
+        window.removeEventListener('storage', loadLocalMessages);
+        clearInterval(interval);
+      };
+    }
+
     const q = query(
       collection(db, 'chats', chatId, 'messages'), 
       orderBy('timestamp', 'asc')
@@ -430,6 +488,7 @@ export default function ChatWindow({
 
   // Synchronize activeCall, typing, and group metadata with Firestore in real-time
   useEffect(() => {
+    if (partnerProfile.uid === 'orion-ai') return;
     const chatDocRef = doc(db, 'chats', chatId);
     const unsubscribe = onSnapshot(chatDocRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -554,6 +613,7 @@ export default function ChatWindow({
   };
 
   const updateTypingStatus = async (isTyping: boolean) => {
+    if (partnerProfile.uid === 'orion-ai') return;
     try {
       await updateDoc(doc(db, 'chats', chatId), {
         [`typing.${myProfile.uid}`]: isTyping
@@ -591,6 +651,61 @@ export default function ChatWindow({
   };
 
   const sendMessagePayload = async (text: string, type: Message['type'], extraFields = {}) => {
+    if (partnerProfile.uid === 'orion-ai') {
+      const localMsgsKey = `konnect_local_messages_orion-ai_${myProfile.uid}`;
+      const localChatKey = `konnect_local_chat_orion-ai_${myProfile.uid}`;
+
+      const userMsg = {
+        id: `msg-user-${Date.now()}`,
+        senderId: myProfile.uid,
+        receiverId: 'orion-ai',
+        text,
+        timestamp: new Date().toISOString(),
+        type,
+        read: true,
+        ...extraFields
+      };
+
+      const storedMsgs = localStorage.getItem(localMsgsKey);
+      let list = [];
+      if (storedMsgs) {
+        try {
+          list = JSON.parse(storedMsgs);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      list.push(userMsg);
+      localStorage.setItem(localMsgsKey, JSON.stringify(list));
+      
+      const formatted = list.map((m: any) => ({
+        ...m,
+        timestamp: m.timestamp ? { toDate: () => new Date(m.timestamp) } : null
+      }));
+      setMessages(formatted);
+      scrollToBottom();
+
+      localStorage.setItem(localChatKey, JSON.stringify({
+        id: `orion-ai-chat-${myProfile.uid}`,
+        participants: [myProfile.uid, 'orion-ai'],
+        lastMessage: {
+          text: type === 'image' ? '📷 Image' : text,
+          timestamp: new Date().toISOString(),
+          senderId: myProfile.uid
+        },
+        unreadCount: {
+          [myProfile.uid]: 0,
+          'orion-ai': 0
+        }
+      }));
+
+      // Trigger Orion AI if text
+      if (type === 'text') {
+        handleOrionAIResponse(text);
+      }
+      return;
+    }
+
     const payload = {
       senderId: myProfile.uid,
       receiverId: partnerProfile.uid,
@@ -616,7 +731,7 @@ export default function ChatWindow({
       
       scrollToBottom();
 
-      // Trigger Orion AI if it is the recipient
+      // Trigger Orion AI if it is the recipient (should not be reached, but kept for fallback)
       if (partnerProfile.uid === 'orion-ai' && type === 'text') {
         handleOrionAIResponse(text);
       }
@@ -1064,6 +1179,42 @@ export default function ChatWindow({
   };
 
   const isLight = myProfile.theme === 'blue-white';
+
+  const wallpaperStyles = {
+    default: isLight ? { backgroundColor: '#f8fafc' } : { backgroundColor: '#040609' },
+    midnight: {
+      backgroundColor: '#020617',
+      backgroundImage: 'radial-gradient(ellipse at center, rgba(16,185,129,0.03) 0%, rgba(30,41,59,0.3) 100%)',
+      backgroundSize: 'cover'
+    },
+    emerald: {
+      backgroundColor: '#022c22',
+      backgroundImage: 'radial-gradient(circle at top right, rgba(16,185,129,0.08) 0%, rgba(2,44,34,0.4) 100%)',
+      backgroundSize: 'cover'
+    },
+    cyber: {
+      backgroundColor: '#0c0a0f',
+      backgroundImage: 'linear-gradient(rgba(244,63,94,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(244,63,94,0.02) 1px, transparent 1px)',
+      backgroundSize: '24px 24px'
+    },
+    light: {
+      backgroundColor: '#ffffff',
+      backgroundImage: 'radial-gradient(circle at center, rgba(59,130,246,0.03) 0%, rgba(248,250,252,1) 100%)',
+      backgroundSize: 'cover'
+    }
+  };
+
+  const getWallpaperStyle = () => {
+    if (myProfile.customBackground) {
+      return {
+        backgroundImage: `url(${myProfile.customBackground})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      };
+    }
+    const styleObj = (wallpaperStyles as any)[chatWallpaper] || wallpaperStyles.default;
+    return styleObj;
+  };
   const isPartnerTyping = partnerProfile.uid === 'orion-ai' ? orionTyping : !!typingUsers[partnerProfile.uid];
   const headerClass = isLight 
     ? "p-4 border-b border-slate-100 bg-white/95 backdrop-blur-md flex items-center justify-between z-10"
@@ -1141,6 +1292,14 @@ export default function ChatWindow({
               <Search className="w-4 h-4" />
             </button>
 
+            <button 
+              onClick={() => { setShowMediaGrid(!showMediaGrid); setShowPartnerProfileDrawer(false); }}
+              title="View shared media & images"
+              className={headerIconBtnClass(showMediaGrid)}
+            >
+              <Image className="w-4 h-4" />
+            </button>
+
             {!partnerProfile.isGroup && (
               <>
                 <button 
@@ -1161,7 +1320,7 @@ export default function ChatWindow({
             )}
 
             <button 
-              onClick={() => setShowPartnerProfileDrawer(!showPartnerProfileDrawer)}
+              onClick={() => { setShowPartnerProfileDrawer(!showPartnerProfileDrawer); setShowMediaGrid(false); }}
               title="View Space Info"
               className={headerIconBtnClass(showPartnerProfileDrawer)}
             >
@@ -1193,12 +1352,7 @@ export default function ChatWindow({
         {/* MESSAGES LOG VIEW */}
         <div 
           className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar relative"
-          style={{
-            backgroundImage: myProfile.customBackground ? `url(${myProfile.customBackground})` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundColor: isLight ? '#F3F4F6' : '#040609'
-          }}
+          style={getWallpaperStyle()}
         >
           {messages
             .filter((m) => {
@@ -1249,7 +1403,10 @@ export default function ChatWindow({
 
                     {/* Shared secure photo */}
                     {msg.type === 'image' && (
-                      <div className="py-1 select-none pointer-events-auto rounded-lg overflow-hidden border border-slate-900">
+                      <div 
+                        onClick={() => setSelectedLightboxImage(msg.mediaUrl)}
+                        className="py-1 select-none pointer-events-auto rounded-lg overflow-hidden border border-slate-900 cursor-pointer hover:opacity-90 transition-all duration-200"
+                      >
                         <img 
                           src={msg.mediaUrl} 
                           alt="shared secure snapshot" 
@@ -1257,8 +1414,8 @@ export default function ChatWindow({
                           referrerPolicy="no-referrer"
                           className="max-w-xs max-h-48 object-cover rounded-lg no-screenshot-css" 
                         />
-                        <div className="bg-slate-950/60 p-1.5 text-center text-[8px] text-slate-400 font-mono border-t border-slate-900">
-                          🛡️ Screenshot Blocked Snapshot
+                        <div className="bg-slate-950/60 p-1.5 text-center text-[8px] text-slate-400 font-mono border-t border-slate-900 flex items-center justify-center gap-1">
+                          🛡️ Screenshot Blocked Snapshot • Zoom
                         </div>
                       </div>
                     )}
@@ -1570,97 +1727,108 @@ export default function ChatWindow({
         )}
 
         <div className={`p-4 border-t backdrop-blur-md flex flex-col gap-2 z-10 ${isLight ? 'border-slate-100 bg-white/95' : 'border-slate-900 bg-[#0e121a]/60'}`}>
-          <div className="flex items-center gap-2">
-            {/* Plus toggle button */}
-            <button
-              type="button"
-              onClick={() => setShowMediaMenu(!showMediaMenu)}
-              className={`p-2.5 rounded-xl transition-all duration-200 ${showMediaMenu ? (isLight ? 'bg-blue-50 text-blue-600 rotate-45' : 'bg-indigo-600/20 text-indigo-400 rotate-45') : (isLight ? 'hover:bg-slate-100 text-slate-500 hover:text-slate-800' : 'hover:bg-neutral-800 text-slate-400 hover:text-white')}`}
-              title="Toggle Attachments"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
+          {partnerProfile.uid === 'oxa-llc' ? (
+            <div className={`p-3 rounded-xl border flex items-center justify-center gap-3 text-center w-full select-none ${
+              isLight 
+                ? 'bg-slate-50 border-slate-200 text-slate-500' 
+                : 'bg-slate-950/40 border-slate-900/85 text-slate-400 font-mono text-[11px] uppercase tracking-wider'
+            }`}>
+              <Ban className="w-4 h-4 text-rose-500 animate-pulse flex-shrink-0" />
+              <span>Direct messaging to Oxa LLC Support Line is disabled.</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {/* Plus toggle button */}
+              <button
+                type="button"
+                onClick={() => setShowMediaMenu(!showMediaMenu)}
+                className={`p-2.5 rounded-xl transition-all duration-200 ${showMediaMenu ? (isLight ? 'bg-blue-50 text-blue-600 rotate-45' : 'bg-indigo-600/20 text-indigo-400 rotate-45') : (isLight ? 'hover:bg-slate-100 text-slate-500 hover:text-slate-800' : 'hover:bg-neutral-800 text-slate-400 hover:text-white')}`}
+                title="Toggle Attachments"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
 
-            {/* Main message form */}
-            <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 items-center">
-              {/* Input field with Smile icon embedded */}
-              <div className="relative flex-1 flex items-center">
-                <button 
-                  type="button"
-                  onClick={() => { setShowEmojis(!showEmojis); setShowStickers(false); }}
-                  className={`absolute left-3.5 transition z-20 ${showEmojis ? 'text-blue-500 scale-110' : (isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-white')}`}
-                  title="Toggle Emojis"
-                >
-                  <Smile className="w-5 h-5" />
-                </button>
+              {/* Main message form */}
+              <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 items-center">
+                {/* Input field with Smile icon embedded */}
+                <div className="relative flex-1 flex items-center">
+                  <button 
+                    type="button"
+                    onClick={() => { setShowEmojis(!showEmojis); setShowStickers(false); }}
+                    className={`absolute left-3.5 transition z-20 ${showEmojis ? 'text-blue-500 scale-110' : (isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-white')}`}
+                    title="Toggle Emojis"
+                  >
+                    <Smile className="w-5 h-5" />
+                  </button>
 
-                {isRecording ? (
-                  <div className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs flex items-center justify-between font-mono border transition-all ${
-                    isLight 
-                      ? 'bg-rose-50 border-rose-200 text-rose-700' 
-                      : 'bg-rose-950/20 border-rose-900/60 text-rose-400'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                      <span className="font-bold tracking-tight">E2EE Voice Capture: {recordDuration}s</span>
-                    </div>
-                    <button 
-                      type="button"
-                      onClick={() => stopRecording(true)}
-                      className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-[10px] uppercase font-bold tracking-wider transition-all"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <input 
-                    type="text" 
-                    value={inputText}
-                    onChange={e => handleTypingText(e.target.value)}
-                    placeholder="Type your secure message..."
-                    className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs transition-all font-sans border ${
+                  {isRecording ? (
+                    <div className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs flex items-center justify-between font-mono border transition-all ${
                       isLight 
-                        ? 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
-                        : 'bg-[#0A0B0D] border-neutral-800 text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                        ? 'bg-rose-50 border-rose-200 text-rose-700' 
+                        : 'bg-rose-950/20 border-rose-900/60 text-rose-400'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                        <span className="font-bold tracking-tight">E2EE Voice Capture: {recordDuration}s</span>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => stopRecording(true)}
+                        className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-[10px] uppercase font-bold tracking-wider transition-all"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <input 
+                      type="text" 
+                      value={inputText}
+                      onChange={e => handleTypingText(e.target.value)}
+                      placeholder="Type your secure message..."
+                      className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs transition-all font-sans border ${
+                        isLight 
+                          ? 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
+                          : 'bg-[#0A0B0D] border-neutral-800 text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                      }`}
+                    />
+                  )}
+                </div>
+   
+                {/* Voice recorder dynamic toggle button */}
+                {inputText.trim().length === 0 ? (
+                  <button
+                    type="button"
+                    onMouseDown={startRecording}
+                    onMouseUp={() => stopRecording(false)}
+                    onTouchStart={startRecording}
+                    onTouchEnd={() => stopRecording(false)}
+                    onClick={() => {
+                      if (isRecording) {
+                        stopRecording(false);
+                      }
+                    }}
+                    className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
+                      isRecording 
+                        ? 'bg-rose-600 text-white animate-pulse' 
+                        : (isLight 
+                            ? 'bg-slate-50 border border-slate-200 text-slate-500 hover:text-blue-500' 
+                            : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400')
                     }`}
-                  />
+                    title={isRecording ? "Release or tap to send voice note" : "Hold or click to record voice note"}
+                  >
+                    <Mic className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button 
+                    type="submit"
+                    className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg transition active:scale-[0.97]"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
                 )}
-              </div>
- 
-              {/* Voice recorder dynamic toggle button */}
-              {inputText.trim().length === 0 ? (
-                <button
-                  type="button"
-                  onMouseDown={startRecording}
-                  onMouseUp={() => stopRecording(false)}
-                  onTouchStart={startRecording}
-                  onTouchEnd={() => stopRecording(false)}
-                  onClick={() => {
-                    if (isRecording) {
-                      stopRecording(false);
-                    }
-                  }}
-                  className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
-                    isRecording 
-                      ? 'bg-rose-600 text-white animate-pulse' 
-                      : (isLight 
-                          ? 'bg-slate-50 border border-slate-200 text-slate-500 hover:text-blue-500' 
-                          : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400')
-                  }`}
-                  title={isRecording ? "Release or tap to send voice note" : "Hold or click to record voice note"}
-                >
-                  <Mic className="w-4 h-4" />
-                </button>
-              ) : (
-                <button 
-                  type="submit"
-                  className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg transition active:scale-[0.97]"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              )}
-            </form>
-          </div>
+              </form>
+            </div>
+          )}
 
           {/* Real-time typing indicator with ripple effect below the message input area */}
           {isPartnerTyping && (
@@ -2049,6 +2217,122 @@ export default function ChatWindow({
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* RIGHT DRAWER: SHARED MEDIA & IMAGES */}
+      {showMediaGrid && (
+        <div className={`w-72 border-l flex flex-col h-full z-20 flex-shrink-0 absolute right-0 top-0 bottom-0 shadow-2xl md:relative md:flex ${
+          isLight 
+            ? 'border-slate-200 bg-white text-slate-800' 
+            : 'border-slate-900 bg-[#0e121a] text-slate-100'
+        }`}>
+          {/* Drawer Header */}
+          <div className={`p-4 border-b flex items-center justify-between ${
+            isLight ? 'border-slate-200 bg-slate-50' : 'border-slate-900 bg-[#121620]'
+          }`}>
+            <h4 className={`font-bold text-xs uppercase tracking-wider font-mono ${isLight ? 'text-slate-700' : 'text-slate-200'}`}>
+              📷 Shared Media
+            </h4>
+            <button 
+              onClick={() => setShowMediaGrid(false)}
+              className={`p-1 rounded-full transition ${
+                isLight ? 'hover:bg-slate-200 text-slate-500 hover:text-slate-800' : 'hover:bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+            {(() => {
+              // Filter messages for images/media files
+              const mediaMessages = messages.filter(
+                (msg) => msg.type === 'image' || (msg.mediaUrl && !msg.text.includes('Established friendship'))
+              );
+
+              if (mediaMessages.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center h-48 text-center px-4">
+                    <Image className="w-8 h-8 text-slate-500 mb-2.5 animate-pulse" />
+                    <span className="text-xs text-slate-400 font-sans">No shared images or media found in this thread.</span>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-2 gap-2">
+                  {mediaMessages.map((msg) => {
+                    const imgUrl = msg.mediaUrl || msg.text;
+                    return (
+                      <div 
+                        key={msg.id}
+                        onClick={() => setSelectedLightboxImage(imgUrl)}
+                        className={`aspect-square rounded-xl overflow-hidden cursor-pointer border relative group transition-all duration-300 hover:scale-[1.03] ${
+                          isLight ? 'border-slate-200 bg-slate-100' : 'border-slate-800 bg-[#070a0f]'
+                        }`}
+                      >
+                        <img 
+                          src={imgUrl} 
+                          alt="Media" 
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center">
+                          <Maximize2 className="w-4 h-4 text-white" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ZOOM LIGHTBOX MODAL */}
+      {selectedLightboxImage && (
+        <div 
+          className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-4 select-none animate-fadeIn"
+          onClick={() => setSelectedLightboxImage(null)}
+        >
+          {/* Lightbox Controls */}
+          <div className="absolute top-4 right-4 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+            <a 
+              href={selectedLightboxImage} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              download="konnect_media.jpg"
+              className="p-2.5 bg-neutral-900/80 hover:bg-neutral-800 text-white rounded-full border border-neutral-800 transition shadow-lg flex items-center justify-center"
+              title="Open full size / Download"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </a>
+            <button 
+              onClick={() => setSelectedLightboxImage(null)}
+              className="p-2.5 bg-neutral-900/80 hover:bg-neutral-800 text-white rounded-full border border-neutral-800 transition shadow-lg flex items-center justify-center"
+              title="Close image zoom"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div 
+            className="relative max-w-full max-h-[85vh] rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-950 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <img 
+              src={selectedLightboxImage} 
+              alt="Zoomed Media" 
+              referrerPolicy="no-referrer"
+              className="max-w-full max-h-[85vh] object-contain mx-auto"
+            />
+          </div>
+          
+          <span className="text-[10px] text-neutral-500 font-mono mt-4">
+            E2EE SECURE DIGITAL ARCHIVE • CLICK OUTSIDE TO CLOSE
+          </span>
         </div>
       )}
     </div>
