@@ -12,7 +12,6 @@ import {
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { UserProfile, THEMES } from '../types';
-import { SafeAdSenseAd } from './SafeAdSenseAd';
 
 interface SidebarProps {
   profile: UserProfile;
@@ -529,18 +528,7 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Subtle, non-disturbing Google Ad Unit */}
-      <div className={`mx-3 my-1 p-1 flex flex-col items-center justify-center bg-black/[0.01] dark:bg-white/[0.01] ${isLight ? 'border-slate-100' : 'border-white/5'}`}>
-        <span className="text-[7px] font-mono tracking-widest text-slate-500 uppercase mb-0.5">Sponsored Space</span>
-        <SafeAdSenseAd 
-          client="ca-pub-8435369808017114"
-          slot="8435369808"
-          style={{ display: 'block', width: '100%', height: '50px' }}
-          format="horizontal"
-          responsive="false"
-          className="min-h-[50px] max-h-[50px]"
-        />
-      </div>
+
 
       {/* LOGOUT TRAIL */}
       <div className={`p-3.5 border-t ${activeThemeObj.border} bg-black/5 flex flex-col gap-2`}>

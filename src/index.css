@@ -25,24 +25,5 @@ html, body, #root {
   }
 }
 
-/* Prevent Google AdSense Auto Ads from hijacking the layout and overlaying the screen */
-.google-auto-placed,
-ins.adsbygoogle[data-vignette-loaded="true"],
-.adsbygoogle-noablate,
-#google_ads_iframe_ {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
 
-/* Ensure only our manual safe ad slots display and do not block navigation */
-.adsense-wrapper {
-  display: flex !important;
-  justify-content: center;
-  align-items: center;
-  width: 100% !important;
-  max-width: 100% !important;
-  margin: 0 auto;
-}
 

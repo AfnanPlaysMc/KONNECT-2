@@ -12,7 +12,6 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile, Message, STICKERS, LIST_OF_GAMES } from '../types';
-import { SafeAdSenseAd } from './SafeAdSenseAd';
 import { EMOJI_LIST } from '../emojis';
 import { SecureAvatar } from './SecureAvatar';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -2237,18 +2236,7 @@ export default function ChatWindow({
                 </div>
               )}
 
-              {/* Subtle sponsor card */}
-              <div className="pt-4 border-t border-slate-900/40 flex flex-col items-center">
-                <span className="text-[8px] font-mono tracking-widest text-slate-500 uppercase mb-1.5">Sponsored Space</span>
-                <SafeAdSenseAd 
-                  client="ca-pub-8435369808017114"
-                  slot="8435369808"
-                  style={{ display: 'block', width: '100%', height: '50px' }}
-                  format="horizontal"
-                  responsive="false"
-                  className="min-h-[50px] max-h-[50px] w-full bg-[#070a0f] p-1 rounded-xl border border-slate-900/60"
-                />
-              </div>
+
 
             </div>
           </div>
