@@ -145,12 +145,25 @@ export default function ChatWindow({
   const [recordDuration, setRecordDuration] = useState(0);
   const recordInterval = useRef<any>(null);
   
+  // Real audio recording references
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  
   // Playing voice notes speed and active states
   const [activeVoiceNote, setActiveVoiceNote] = useState<string | null>(null);
   const [isPlayingVoice, setIsPlayingVoice] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
   const audioCtxRef = useRef<any>(null);
   const audioNodeRef = useRef<any>(null);
+
+  // Sync playback speed to real audio player
+  useEffect(() => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
 
   // Orion AI Chatbot Integration
   const [orionTyping, setOrionTyping] = useState(false);
@@ -266,8 +279,8 @@ export default function ChatWindow({
           }
           
           try {
-            // Using vc.init7.net, an official high-speed Swiss Jitsi public server that is 100% free, unlimited, and does not require host login/moderator authentication.
-            const domain = 'vc.init7.net';
+            // Using meet.jit.si, the official public open-source Jitsi server requested by the user.
+            const domain = 'meet.jit.si';
             const options = {
               roomName: callSession.roomId,
               width: '100%',
@@ -708,73 +721,160 @@ export default function ChatWindow({
     }
   };
 
-  // Voice Note Simulation & Genuine recording!
-  const startRecording = () => {
-    setIsRecording(true);
-    setRecordDuration(0);
-    recordInterval.current = setInterval(() => {
-      setRecordDuration(prev => prev + 1);
-    }, 1000);
+  // Voice Note Genuine recording using Web Audio MediaRecorder!
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+      
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+        ? 'audio/webm' 
+        : MediaRecorder.isTypeSupported('audio/mp4') 
+          ? 'audio/mp4' 
+          : '';
+          
+      const options = mimeType ? { mimeType } : undefined;
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordDuration(0);
+
+      recordInterval.current = setInterval(() => {
+        setRecordDuration(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+    }
   };
 
   const stopRecording = async (cancel = false) => {
+    if (!mediaRecorderRef.current || !isRecording) return;
+    
     setIsRecording(false);
     clearInterval(recordInterval.current);
-    
-    if (cancel || recordDuration < 1) return;
 
-    // Send voice message as simulated audio base64 or custom audio note payload
-    const simulatedVoiceBase = `voice_note_freq_${Math.floor(Math.random() * 500)}`;
-    await sendMessagePayload(`🎤 Voice Note (${recordDuration}s)`, 'voice', {
-      mediaUrl: simulatedVoiceBase,
-      duration: recordDuration
-    });
+    const recorder = mediaRecorderRef.current;
+    
+    recorder.onstop = async () => {
+      if (cancel || recordDuration < 1) {
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+        return;
+      }
+
+      const audioBlob = new Blob(audioChunksRef.current, { 
+        type: recorder.mimeType || 'audio/webm' 
+      });
+      
+      // Convert real blob to base64 Data URL for Firestore persistence
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      reader.onloadend = async () => {
+        const base64Audio = reader.result as string;
+        await sendMessagePayload(`🎤 Voice Note (${recordDuration}s)`, 'voice', {
+          mediaUrl: base64Audio,
+          duration: recordDuration
+        });
+      };
+
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+
+    recorder.stop();
   };
 
-  // Playing synthetic tones / mock audio waveforms for recorded voice note
-  const playVoiceNote = (messageId: string, duration: number) => {
-    if (activeVoiceNote === messageId && isPlayingVoice) {
+  // Playing synthetic tones OR genuine browser-recorded audio for voice note
+  const playVoiceNote = (mediaUrl: string, duration: number) => {
+    // If clicking active voice note, toggle it pause/play
+    if (activeVoiceNote === mediaUrl && isPlayingVoice) {
       setIsPlayingVoice(false);
+      if (audioPlayerRef.current) {
+        try { audioPlayerRef.current.pause(); } catch (e) {}
+      }
       if (audioNodeRef.current) {
         try { audioNodeRef.current.stop(); } catch (e) {}
       }
       return;
     }
 
-    setActiveVoiceNote(messageId);
+    // Stop previous player
+    if (audioPlayerRef.current) {
+      try { audioPlayerRef.current.pause(); } catch (e) {}
+      audioPlayerRef.current = null;
+    }
+    if (audioNodeRef.current) {
+      try { audioNodeRef.current.stop(); } catch (e) {}
+      audioNodeRef.current = null;
+    }
+
+    setActiveVoiceNote(mediaUrl);
     setIsPlayingVoice(true);
 
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      audioCtxRef.current = audioCtx;
-
-      const osc = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      osc.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-
-      audioNodeRef.current = osc;
-
-      osc.type = 'triangle';
-      // Speed multiplier
-      const freqMultiplier = playbackSpeed;
-      osc.frequency.setValueAtTime(300, audioCtx.currentTime);
-      osc.frequency.linearRampToValueAtTime(500, audioCtx.currentTime + duration / freqMultiplier);
-
-      gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.0001, audioCtx.currentTime + duration / freqMultiplier);
-
-      osc.start();
-      osc.stop(audioCtx.currentTime + duration / freqMultiplier);
-
-      setTimeout(() => {
+    // If mediaUrl is a real browser base64 audio string or URL, play it back!
+    if (mediaUrl.startsWith('data:audio') || mediaUrl.startsWith('blob:') || mediaUrl.startsWith('http')) {
+      try {
+        const audio = new Audio(mediaUrl);
+        audioPlayerRef.current = audio;
+        audio.playbackRate = playbackSpeed;
+        audio.play().catch((err) => {
+          console.error("Audio playback error:", err);
+          setIsPlayingVoice(false);
+          setActiveVoiceNote(null);
+        });
+        audio.onended = () => {
+          setIsPlayingVoice(false);
+          setActiveVoiceNote(null);
+        };
+      } catch (e) {
+        console.error("Failed to play real audio:", e);
         setIsPlayingVoice(false);
         setActiveVoiceNote(null);
-      }, (duration * 1000) / freqMultiplier);
+      }
+    } else {
+      // Legacy or mock fallback - Play a beautiful zen bell hum (sine wave, soft decay) instead of high-pitched buzzy buzzer noise!
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioCtxRef.current = audioCtx;
 
-    } catch (e) {
-      console.warn(e);
-      setIsPlayingVoice(false);
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        audioNodeRef.current = osc;
+
+        osc.type = 'sine'; // much softer sine wave
+        const freqMultiplier = playbackSpeed;
+        osc.frequency.setValueAtTime(320, audioCtx.currentTime); // pleasant soft 320Hz hum
+        osc.frequency.linearRampToValueAtTime(380, audioCtx.currentTime + duration / freqMultiplier);
+
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); // pleasant moderate volume
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration / freqMultiplier);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration / freqMultiplier);
+
+        setTimeout(() => {
+          setIsPlayingVoice(false);
+          setActiveVoiceNote(null);
+        }, (duration * 1000) / freqMultiplier);
+
+      } catch (e) {
+        console.warn(e);
+        setIsPlayingVoice(false);
+      }
     }
   };
 
@@ -964,6 +1064,7 @@ export default function ChatWindow({
   };
 
   const isLight = myProfile.theme === 'blue-white';
+  const isPartnerTyping = partnerProfile.uid === 'orion-ai' ? orionTyping : !!typingUsers[partnerProfile.uid];
   const headerClass = isLight 
     ? "p-4 border-b border-slate-100 bg-white/95 backdrop-blur-md flex items-center justify-between z-10"
     : "p-4 border-b border-slate-900 bg-[#0e121a]/80 backdrop-blur-md flex items-center justify-between z-10";
@@ -1487,25 +1588,45 @@ export default function ChatWindow({
                 <button 
                   type="button"
                   onClick={() => { setShowEmojis(!showEmojis); setShowStickers(false); }}
-                  className={`absolute left-3.5 transition ${showEmojis ? 'text-blue-500 scale-110' : (isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-white')}`}
+                  className={`absolute left-3.5 transition z-20 ${showEmojis ? 'text-blue-500 scale-110' : (isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-white')}`}
                   title="Toggle Emojis"
                 >
                   <Smile className="w-5 h-5" />
                 </button>
 
-                <input 
-                  type="text" 
-                  value={inputText}
-                  onChange={e => handleTypingText(e.target.value)}
-                  placeholder="Type your secure message..."
-                  className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs transition-all font-sans border ${
+                {isRecording ? (
+                  <div className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs flex items-center justify-between font-mono border transition-all ${
                     isLight 
-                      ? 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
-                      : 'bg-[#0A0B0D] border-neutral-800 text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
-                  }`}
-                />
+                      ? 'bg-rose-50 border-rose-200 text-rose-700' 
+                      : 'bg-rose-950/20 border-rose-900/60 text-rose-400'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                      <span className="font-bold tracking-tight">E2EE Voice Capture: {recordDuration}s</span>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => stopRecording(true)}
+                      className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-[10px] uppercase font-bold tracking-wider transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <input 
+                    type="text" 
+                    value={inputText}
+                    onChange={e => handleTypingText(e.target.value)}
+                    placeholder="Type your secure message..."
+                    className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs transition-all font-sans border ${
+                      isLight 
+                        ? 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
+                        : 'bg-[#0A0B0D] border-neutral-800 text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                    }`}
+                  />
+                )}
               </div>
-
+ 
               {/* Voice recorder dynamic toggle button */}
               {inputText.trim().length === 0 ? (
                 <button
@@ -1514,6 +1635,11 @@ export default function ChatWindow({
                   onMouseUp={() => stopRecording(false)}
                   onTouchStart={startRecording}
                   onTouchEnd={() => stopRecording(false)}
+                  onClick={() => {
+                    if (isRecording) {
+                      stopRecording(false);
+                    }
+                  }}
                   className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
                     isRecording 
                       ? 'bg-rose-600 text-white animate-pulse' 
@@ -1521,7 +1647,7 @@ export default function ChatWindow({
                           ? 'bg-slate-50 border border-slate-200 text-slate-500 hover:text-blue-500' 
                           : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400')
                   }`}
-                  title="Hold to Record Voice Note"
+                  title={isRecording ? "Release or tap to send voice note" : "Hold or click to record voice note"}
                 >
                   <Mic className="w-4 h-4" />
                 </button>
@@ -1535,6 +1661,21 @@ export default function ChatWindow({
               )}
             </form>
           </div>
+
+          {/* Real-time typing indicator with ripple effect below the message input area */}
+          {isPartnerTyping && (
+            <div className="flex items-center gap-2 px-1.5 py-0.5 animate-fadeIn">
+              <div className="relative flex items-center justify-center w-5 h-5 flex-shrink-0">
+                <span className={`absolute inline-flex h-full w-full rounded-full animate-ping opacity-60 ${isLight ? 'bg-blue-400' : 'bg-indigo-400'}`} />
+                <span className={`absolute inline-flex h-3 w-3 rounded-full animate-pulse ${isLight ? 'bg-blue-500/50' : 'bg-indigo-500/50'}`} />
+                <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isLight ? 'bg-blue-600' : 'bg-indigo-500'}`} />
+              </div>
+              <span className={`text-[10px] font-mono tracking-wider font-bold uppercase ${isLight ? 'text-slate-600' : 'text-slate-400'} flex items-center gap-1`}>
+                {partnerProfile.displayName} <span className="animate-pulse">is typing...</span>
+              </span>
+            </div>
+          )}
+
         </div>
 
         {/* FULL CALL PANEL SIMULATION PORTAL OVERLAY */}

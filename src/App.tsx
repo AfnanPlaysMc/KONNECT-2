@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, updateDoc, setDoc, collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, collection, onSnapshot, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserProfile, THEMES } from './types';
 import Auth from './components/Auth';
@@ -85,6 +85,114 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  // Auto-seed Orion AI and Oxa LLC profile & chat if they do not exist
+  useEffect(() => {
+    if (!profile) return;
+
+    const seedBotsAndChats = async () => {
+      try {
+        const bots = [
+          {
+            uid: 'orion-ai',
+            displayName: 'Orion AI',
+            username: 'orion_ai',
+            photoURL: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
+            bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
+            welcomeMessage: "Hello! I am Orion AI, your E2EE intelligent assistant. Type any secure query or prompt and I will decode it right away."
+          },
+          {
+            uid: 'oxa-llc',
+            displayName: 'Oxa LLC',
+            username: 'oxa_llc',
+            photoURL: 'https://images.unsplash.com/photo-1614741118887-7a4ee193a5fa?w=150',
+            bio: 'Official developers of the Konnect secure suite. Contact us for security audits or premium features.',
+            welcomeMessage: "Welcome to Konnect! We are Oxa LLC, the development team behind this secure messaging platform. Feel free to explore our settings, premium features, and arcade. Let us know if you find any security bugs!"
+          }
+        ];
+
+        for (const bot of bots) {
+          // 1. Ensure profile document exists
+          const botProfileRef = doc(db, 'profiles', bot.uid);
+          const botProfileSnap = await getDoc(botProfileRef);
+          
+          if (!botProfileSnap.exists()) {
+            await setDoc(botProfileRef, {
+              uid: bot.uid,
+              displayName: bot.displayName,
+              username: bot.username,
+              photoURL: bot.photoURL,
+              bannerURL: '',
+              bio: bot.bio,
+              blockedUsers: [],
+              closeFriends: [],
+              customList: [],
+              theme: 'deep-dark',
+              stealthMode: false,
+              readReceipts: true,
+              notificationSounds: {},
+              status: 'online',
+              lastSeen: new Date()
+            });
+            console.log(`Seeded bot profile: ${bot.displayName}`);
+          }
+
+          // 2. Ensure chat document exists for this user and this bot
+          const chatsQuery = query(
+            collection(db, 'chats'),
+            where('participants', 'array-contains', profile.uid)
+          );
+          const chatsSnap = await getDocs(chatsQuery);
+          let chatExists = false;
+          let existingChatId = '';
+          
+          chatsSnap.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data.participants && data.participants.includes(bot.uid)) {
+              chatExists = true;
+              existingChatId = docSnap.id;
+            }
+          });
+
+          if (!chatExists) {
+            // Create a brand new chat document
+            const chatRef = doc(collection(db, 'chats'));
+            const chatId = chatRef.id;
+            
+            await setDoc(chatRef, {
+              participants: [profile.uid, bot.uid],
+              lastMessage: {
+                text: bot.welcomeMessage,
+                timestamp: new Date(),
+                senderId: bot.uid
+              },
+              unreadCount: {
+                [profile.uid]: 0,
+                [bot.uid]: 0
+              }
+            });
+
+            // Add welcome message to messages subcollection
+            const msgRef = doc(collection(db, 'chats', chatId, 'messages'));
+            await setDoc(msgRef, {
+              senderId: bot.uid,
+              receiverId: profile.uid,
+              text: bot.welcomeMessage,
+              timestamp: new Date(),
+              type: 'text',
+              read: false
+            });
+
+            console.log(`Created chat with bot ${bot.displayName}`);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to seed bots and chats:", e);
+      }
+    };
+
+    seedBotsAndChats();
+  }, [profile]);
 
   // Sync presence status: Offline on tab closing
   useEffect(() => {
@@ -356,10 +464,10 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 md:p-6 transition-all duration-300`}>
+    <div className={`h-screen h-[100dvh] w-screen overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 md:p-6 transition-all duration-300`}>
       
       {/* Sleek dashboard card frame */}
-      <div className={`w-full max-w-6xl h-full md:h-[680px] ${activeThemeObj.card} border ${activeThemeObj.border} md:rounded-2xl flex overflow-hidden shadow-2xl relative`}>
+      <div className={`w-full max-w-6xl h-full md:h-[calc(100vh-3rem)] md:max-h-[720px] ${activeThemeObj.card} border-0 md:border ${activeThemeObj.border} md:rounded-2xl flex overflow-hidden shadow-2xl relative`}>
         
         {/* Mobile Left Sidebar overlay backdrop */}
         {mobileMenuOpen && (
@@ -488,7 +596,7 @@ export default function App() {
         {/* OVERLAY MODAL: ARCADE PORTAL */}
         {showGames && (
           <div className="absolute inset-0 z-40 bg-[#07090e]/95 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="w-full max-w-md h-[540px] bg-[#0c1017] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="w-full max-w-md h-full max-h-[540px] md:h-[540px] bg-[#0c1017] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
               <GamesHub 
                 onClose={() => setShowGames(false)}
                 activeFriendId={activePartner?.uid}

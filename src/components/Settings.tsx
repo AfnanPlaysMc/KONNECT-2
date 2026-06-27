@@ -303,44 +303,46 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
   };
 
   return (
-    <div className="absolute inset-0 z-50 bg-[#07090e]/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className={`w-full max-w-2xl h-[560px] ${activeThemeObj.card} border ${activeThemeObj.border} rounded-2xl overflow-hidden flex shadow-2xl ${activeThemeObj.text} transition-all`}>
+    <div className="absolute inset-0 z-50 bg-[#07090e]/80 backdrop-blur-md flex items-center justify-center p-0 md:p-4">
+      <div className={`w-full max-w-2xl h-full md:h-[560px] max-h-full ${activeThemeObj.card} border-0 md:border ${activeThemeObj.border} rounded-none md:rounded-2xl overflow-hidden flex flex-col md:flex-row shadow-2xl ${activeThemeObj.text} transition-all`}>
         
         {/* SIDEBAR TABS */}
-        <div className={`w-52 bg-black/10 border-r ${activeThemeObj.border} p-4 flex flex-col justify-between`}>
-          <div className="space-y-1.5">
-            <h4 className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-500' : 'text-slate-400'} mb-4 px-2`}>Konnect Settings</h4>
+        <div className={`w-full md:w-52 bg-black/10 border-b md:border-b-0 md:border-r ${activeThemeObj.border} p-3 md:p-4 flex flex-row md:flex-col justify-between items-center md:items-stretch gap-3 flex-shrink-0`}>
+          <div className="flex md:flex-col gap-2 min-w-0 flex-1 md:flex-initial">
+            <h4 className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-500' : 'text-slate-400'} hidden md:block px-2 mb-4`}>Konnect Settings</h4>
             
-            <button 
-              onClick={() => setActiveTab('profile')}
-              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'profile' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
-            >
-              <User className="w-4 h-4" /> Personalize
-            </button>
+            <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-x-visible pb-1 md:pb-0 scrollbar-none flex-1 md:flex-initial">
+              <button 
+                onClick={() => setActiveTab('profile')}
+                className={`flex-shrink-0 text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'profile' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
+              >
+                <User className="w-4 h-4" /> <span className="hidden sm:inline md:inline">Personalize</span><span className="sm:hidden">Profile</span>
+              </button>
 
-            <button 
-              onClick={() => setActiveTab('theme')}
-              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'theme' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
-            >
-              <Palette className="w-4 h-4" /> Space Themes
-            </button>
+              <button 
+                onClick={() => setActiveTab('theme')}
+                className={`flex-shrink-0 text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'theme' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
+              >
+                <Palette className="w-4 h-4" /> <span className="hidden sm:inline md:inline">Space Themes</span><span className="sm:hidden">Themes</span>
+              </button>
 
-            <button 
-              onClick={() => setActiveTab('privacy')}
-              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'privacy' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
-            >
-              <Shield className="w-4 h-4" /> Stealth & Block list
-            </button>
+              <button 
+                onClick={() => setActiveTab('privacy')}
+                className={`flex-shrink-0 text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'privacy' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
+              >
+                <Shield className="w-4 h-4" /> <span className="hidden sm:inline md:inline">Stealth & Block</span><span className="sm:hidden">Stealth</span>
+              </button>
 
-            <button 
-              onClick={() => setActiveTab('sounds')}
-              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'sounds' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
-            >
-              <Volume2 className="w-4 h-4" /> Custom Sounds
-            </button>
+              <button 
+                onClick={() => setActiveTab('sounds')}
+                className={`flex-shrink-0 text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'sounds' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
+              >
+                <Volume2 className="w-4 h-4" /> <span className="hidden sm:inline md:inline">Custom Sounds</span><span className="sm:hidden">Sounds</span>
+              </button>
+            </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="flex md:flex-col gap-2 flex-shrink-0">
             <button 
               onClick={() => {
                 if (window.confirm('Are you sure you want to log out?')) {
@@ -349,14 +351,10 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
                 }
               }}
               type="button"
-              className="w-full py-2.5 bg-rose-950/20 hover:bg-rose-600 border border-rose-900/40 text-rose-400 hover:text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition active:scale-95"
+              className="px-3 py-2 md:py-2.5 bg-rose-950/20 hover:bg-rose-600 border border-rose-900/40 text-rose-400 hover:text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition active:scale-95"
             >
-              <LogOut className="w-3.5 h-3.5" /> Log Out
+              <LogOut className="w-3.5 h-3.5" /> <span className="hidden md:inline">Log Out</span>
             </button>
-
-            <div className={`text-[9px] ${isLight ? 'text-slate-400' : 'text-slate-500'} font-mono text-center`}>
-              Konnect v2.4.0<br/>By Oxa LLC
-            </div>
           </div>
         </div>
 
