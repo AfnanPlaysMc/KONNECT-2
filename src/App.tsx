@@ -23,6 +23,7 @@ export default function App() {
   const [showStories, setShowStories] = useState(false);
   const [showGames, setShowGames] = useState(false);
   const [initialLaunchGameId, setInitialLaunchGameId] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [hasRoutedOnMount, setHasRoutedOnMount] = useState(false);
@@ -116,6 +117,7 @@ export default function App() {
     setShowSettings(false);
     setActiveChatId(null);
     setActivePartner(null);
+    setMobileMenuOpen(false);
     if (window.location.pathname !== '/konnectmain') {
       window.history.pushState(null, '', '/konnectmain');
     }
@@ -125,6 +127,7 @@ export default function App() {
     setShowStories(true);
     setShowGames(false);
     setShowSettings(false);
+    setMobileMenuOpen(false);
     if (window.location.pathname !== '/stories') {
       window.history.pushState(null, '', '/stories');
     }
@@ -135,6 +138,7 @@ export default function App() {
     setShowGames(true);
     setShowStories(false);
     setShowSettings(false);
+    setMobileMenuOpen(false);
     if (window.location.pathname !== '/arcade') {
       window.history.pushState(null, '', '/arcade');
     }
@@ -144,6 +148,7 @@ export default function App() {
     setShowSettings(true);
     setShowStories(false);
     setShowGames(false);
+    setMobileMenuOpen(false);
     if (window.location.pathname !== '/settings') {
       window.history.pushState(null, '', '/settings');
     }
@@ -155,6 +160,7 @@ export default function App() {
     setShowStories(false);
     setShowGames(false);
     setShowSettings(false);
+    setMobileMenuOpen(false);
     const targetPath = `/chat/friends/${partner.uid}`;
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
@@ -187,6 +193,7 @@ export default function App() {
         setShowStories(false);
         setShowGames(false);
         setShowSettings(false);
+        setMobileMenuOpen(false);
         const targetPath = `/chat/friends/${friendUid}`;
         if (window.location.pathname !== targetPath) {
           window.history.pushState(null, '', targetPath);
@@ -211,6 +218,7 @@ export default function App() {
         setShowStories(false);
         setShowGames(false);
         setShowSettings(false);
+        setMobileMenuOpen(false);
         const targetPath = `/chat/friends/${friendUid}`;
         if (window.location.pathname !== targetPath) {
           window.history.pushState(null, '', targetPath);
@@ -335,42 +343,68 @@ export default function App() {
   // List friend IDs to determine stories filtering privacy constraints
   const partnerUids: string[] = activePartner ? [activePartner.uid] : [];
 
+  const isLight = activeThemeObj.id === 'blue-white';
+  const getNavBtnClass = (isActive: boolean) => {
+    if (isActive) {
+      return isLight 
+        ? 'p-3 rounded-xl cursor-pointer transition bg-blue-50 text-blue-600' 
+        : 'p-3 rounded-xl cursor-pointer transition bg-white/10 text-white';
+    }
+    return isLight 
+      ? 'p-3 rounded-xl cursor-pointer transition text-slate-400 hover:text-slate-700 hover:bg-slate-100/50' 
+      : 'p-3 rounded-xl cursor-pointer transition text-neutral-500 hover:text-neutral-300 hover:bg-white/5';
+  };
+
   return (
     <div className={`min-h-screen ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 md:p-6 transition-all duration-300`}>
       
       {/* Sleek dashboard card frame */}
-      <div className={`w-full max-w-6xl h-full md:h-[680px] bg-[#0c1017] border ${activeThemeObj.border} md:rounded-2xl flex overflow-hidden shadow-2xl relative`}>
+      <div className={`w-full max-w-6xl h-full md:h-[680px] ${activeThemeObj.card} border ${activeThemeObj.border} md:rounded-2xl flex overflow-hidden shadow-2xl relative`}>
         
-        {/* Left Sidebar: App Navigation (High Density Style) */}
-        <div className="hidden sm:flex w-20 bg-[#121417] border-r border-neutral-800 flex-col items-center py-6 gap-8 flex-shrink-0">
-          <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/20 font-black text-xl text-white select-none">
+        {/* Mobile Left Sidebar overlay backdrop */}
+        {mobileMenuOpen && (
+          <div 
+            className="sm:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm animate-fadeIn"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+
+        {/* Left Sidebar: App Navigation */}
+        <div className={`
+          fixed sm:static inset-y-0 left-0 z-50 w-20 
+          ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} 
+          sm:translate-x-0 transition-transform duration-300 ease-in-out
+          flex flex-col items-center py-6 gap-8 flex-shrink-0
+          ${activeThemeObj.card} border-r ${activeThemeObj.border}
+        `}>
+          <div className={`w-12 h-12 ${activeThemeObj.primary} rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/20 font-black text-xl text-white select-none`}>
             K
           </div>
           <nav className="flex flex-col gap-6 flex-1 text-neutral-400">
             <button 
               onClick={navigateToDashboard}
-              className={`p-3 rounded-xl cursor-pointer transition ${!activeChatId ? 'bg-neutral-800/60 text-blue-400' : 'hover:text-neutral-200'}`}
+              className={getNavBtnClass(!activeChatId && !showStories && !showGames && !showSettings)}
               title="Dashboard"
             >
               <MessageSquare className="w-5 h-5" />
             </button>
             <button 
               onClick={navigateToStories}
-              className="p-3 text-neutral-500 hover:text-neutral-300 cursor-pointer transition"
+              className={getNavBtnClass(showStories)}
               title="Stories"
             >
               <Film className="w-5 h-5" />
             </button>
             <button 
               onClick={() => navigateToArcade()}
-              className="p-3 text-neutral-500 hover:text-neutral-300 cursor-pointer transition"
+              className={getNavBtnClass(showGames)}
               title="Arcade"
             >
               <Gamepad2 className="w-5 h-5" />
             </button>
             <button 
               onClick={navigateToSettings}
-              className="p-3 text-neutral-500 hover:text-neutral-300 cursor-pointer transition"
+              className={getNavBtnClass(showSettings)}
               title="Settings"
             >
               <Shield className="w-5 h-5" />
@@ -391,6 +425,7 @@ export default function App() {
           onOpenSettings={navigateToSettings}
           onOpenStories={navigateToStories}
           onOpenGames={() => navigateToArcade()}
+          onOpenMobileMenu={() => setMobileMenuOpen(true)}
         />
 
         {/* PRIMARY MAIN PANEL */}

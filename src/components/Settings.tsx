@@ -18,6 +18,9 @@ interface SettingsProps {
 export default function Settings({ profile, onUpdateProfile, onClose }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'theme' | 'privacy' | 'sounds'>('profile');
   
+  const activeThemeObj = THEMES.find(t => t.id === (profile.theme || 'deep-dark')) || THEMES[0];
+  const isLight = activeThemeObj.id === 'blue-white';
+  
   // Profile form states
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [username, setUsername] = useState(profile.username);
@@ -300,38 +303,38 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
   };
 
   return (
-    <div className="absolute inset-0 z-50 bg-[#07090e]/95 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl h-[560px] bg-[#0c1017] border border-slate-800/80 rounded-2xl overflow-hidden flex shadow-2xl">
+    <div className="absolute inset-0 z-50 bg-[#07090e]/80 backdrop-blur-md flex items-center justify-center p-4">
+      <div className={`w-full max-w-2xl h-[560px] ${activeThemeObj.card} border ${activeThemeObj.border} rounded-2xl overflow-hidden flex shadow-2xl ${activeThemeObj.text} transition-all`}>
         
         {/* SIDEBAR TABS */}
-        <div className="w-52 bg-slate-950/40 border-r border-slate-900 p-4 flex flex-col justify-between">
+        <div className={`w-52 bg-black/10 border-r ${activeThemeObj.border} p-4 flex flex-col justify-between`}>
           <div className="space-y-1.5">
-            <h4 className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mb-4 px-2">Konnect Settings</h4>
+            <h4 className={`text-[10px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-500' : 'text-slate-400'} mb-4 px-2`}>Konnect Settings</h4>
             
             <button 
               onClick={() => setActiveTab('profile')}
-              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'profile' ? 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'profile' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
             >
               <User className="w-4 h-4" /> Personalize
             </button>
 
             <button 
               onClick={() => setActiveTab('theme')}
-              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'theme' ? 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'theme' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
             >
               <Palette className="w-4 h-4" /> Space Themes
             </button>
 
             <button 
               onClick={() => setActiveTab('privacy')}
-              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'privacy' ? 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'privacy' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
             >
               <Shield className="w-4 h-4" /> Stealth & Block list
             </button>
 
             <button 
               onClick={() => setActiveTab('sounds')}
-              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'sounds' ? 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'sounds' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
             >
               <Volume2 className="w-4 h-4" /> Custom Sounds
             </button>
@@ -351,21 +354,21 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
               <LogOut className="w-3.5 h-3.5" /> Log Out
             </button>
 
-            <div className="text-[9px] text-slate-500 font-mono text-center">
+            <div className={`text-[9px] ${isLight ? 'text-slate-400' : 'text-slate-500'} font-mono text-center`}>
               Konnect v2.4.0<br/>By Oxa LLC
             </div>
           </div>
         </div>
 
         {/* DETAILS SECTION */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-slate-900/10">
+        <div className="flex-1 flex flex-col overflow-hidden bg-black/5">
           
           {/* HEADER */}
-          <div className="flex justify-between items-center px-6 py-4 border-b border-slate-900 bg-slate-950/20">
+          <div className={`flex justify-between items-center px-6 py-4 border-b ${activeThemeObj.border} bg-black/5`}>
             <div className="flex items-center gap-4 min-w-0">
               <button 
                 onClick={onClose}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-slate-800 transition active:scale-95 flex-shrink-0"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200' : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-800'} text-xs font-bold rounded-xl border transition active:scale-95 flex-shrink-0`}
                 title="Go back to chat"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
@@ -373,13 +376,13 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
               </button>
 
               <div className="min-w-0">
-                <h3 className="font-bold text-sm text-white leading-tight truncate">
+                <h3 className={`font-bold text-sm ${isLight ? 'text-slate-800' : 'text-white'} leading-tight truncate`}>
                   {activeTab === 'profile' && 'Personal Profile ID'}
                   {activeTab === 'theme' && 'Visual Spaces'}
                   {activeTab === 'privacy' && 'Advanced Stealth Space'}
                   {activeTab === 'sounds' && 'Acoustic Notification Mapping'}
                 </h3>
-                <p className="text-[10px] text-slate-400 line-clamp-1">
+                <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'} line-clamp-1`}>
                   {activeTab === 'profile' && 'Change your name, custom username bio or banner.'}
                   {activeTab === 'theme' && 'Swap styles between AMOLED obsidian and vibrant cyber neon.'}
                   {activeTab === 'privacy' && 'Stealth state control, block list editing and stories list.'}
@@ -387,7 +390,7 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
                 </p>
               </div>
             </div>
-            <button onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition" title="Close Settings">
+            <button onClick={onClose} className={`p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full ${isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-400 hover:text-white'} transition`} title="Close Settings">
               <X className="w-4 h-4" />
             </button>
           </div>

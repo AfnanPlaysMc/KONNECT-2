@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Plus, Settings as SettingsIcon, Film, Gamepad2, QrCode, 
-  LogOut, UserPlus, Check, X, Bell, Moon, Sun, ShieldAlert, BadgeHelp, CheckCheck
+  LogOut, UserPlus, Check, X, Bell, Moon, Sun, ShieldAlert, BadgeHelp, CheckCheck, Menu
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { UserProfile } from '../types';
+import { UserProfile, THEMES } from '../types';
 
 interface SidebarProps {
   profile: UserProfile;
@@ -20,10 +20,11 @@ interface SidebarProps {
   onOpenSettings: () => void;
   onOpenStories: () => void;
   onOpenGames: () => void;
+  onOpenMobileMenu?: () => void;
 }
 
 export default function Sidebar({ 
-  profile, activeChatId, onSelectChat, onOpenSettings, onOpenStories, onOpenGames 
+  profile, activeChatId, onSelectChat, onOpenSettings, onOpenStories, onOpenGames, onOpenMobileMenu 
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [chats, setChats] = useState<{ id: string; partner: UserProfile; lastMessage?: any; unread?: number }[]>([]);
@@ -280,27 +281,31 @@ export default function Sidebar({
     c.partner.username.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const isLight = profile.theme === 'blue-white';
+  const activeThemeObj = THEMES.find(t => t.id === (profile.theme || 'deep-dark')) || THEMES[0];
+  const isLight = activeThemeObj.id === 'blue-white';
+
   const themeClasses = {
-    wrapper: isLight ? `w-full sm:w-80 border-r border-slate-200 bg-white flex flex-col h-full text-slate-800 select-none flex-shrink-0 ${activeChatId ? 'hidden sm:flex' : 'flex'}` : `w-full sm:w-80 border-r border-neutral-800 bg-[#0E1013] flex flex-col h-full text-slate-100 select-none flex-shrink-0 ${activeChatId ? 'hidden sm:flex' : 'flex'}`,
-    header: isLight ? 'p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between' : 'p-4 border-b border-neutral-800 bg-neutral-900/10 flex items-center justify-between',
-    headerText: isLight ? 'font-bold text-sm text-slate-800 line-clamp-1' : 'font-bold text-sm text-slate-200 line-clamp-1',
-    usernameText: isLight ? 'text-[10px] font-mono text-slate-400' : 'text-[10px] font-mono text-slate-500',
-    iconBtn: isLight ? 'p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-slate-800 transition' : 'p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-white transition',
-    inputBg: isLight ? 'w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono shadow-sm' : 'w-full pl-9 pr-4 py-2 bg-slate-900/60 border border-slate-900 rounded-xl text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono',
-    quickLaunch: isLight ? 'p-3 border-b border-slate-100 bg-slate-50 grid grid-cols-2 gap-2' : 'p-3 border-b border-slate-900 bg-slate-950/20 grid grid-cols-2 gap-2',
-    quickBtn: isLight ? 'flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition group shadow-sm' : 'flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-slate-900/30 border border-slate-900 hover:border-slate-800 hover:bg-slate-900/50 transition group',
-    quickText: isLight ? 'text-[9px] font-bold text-slate-500 uppercase tracking-wider font-mono' : 'text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono',
-    conversationsTitle: isLight ? 'px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest text-slate-400 font-mono' : 'px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest text-slate-500 font-mono',
+    wrapper: `w-full sm:w-80 border-r ${activeThemeObj.border} ${activeThemeObj.card} flex flex-col h-full ${activeThemeObj.text} select-none flex-shrink-0 ${activeChatId ? 'hidden sm:flex' : 'flex'}`,
+    header: `p-4 border-b ${activeThemeObj.border} bg-black/5 flex items-center justify-between`,
+    headerText: `font-bold text-sm ${isLight ? 'text-slate-800' : 'text-slate-200'} line-clamp-1`,
+    usernameText: `text-[10px] font-mono ${isLight ? 'text-slate-400' : 'text-slate-500'}`,
+    iconBtn: `p-1.5 hover:bg-black/10 dark:hover:bg-white/5 rounded-lg transition`,
+    inputBg: `w-full pl-9 pr-4 py-2 bg-black/5 dark:bg-white/5 border ${activeThemeObj.border} rounded-xl text-xs placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono`,
+    quickLaunch: `p-3 border-b ${activeThemeObj.border} bg-black/5 grid grid-cols-2 gap-2`,
+    quickBtn: `flex flex-col items-center gap-1.5 py-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border ${activeThemeObj.border} hover:bg-black/[0.05] dark:hover:bg-white/[0.05] transition group`,
+    quickText: `text-[9px] font-bold uppercase tracking-wider font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`,
+    conversationsTitle: `px-4 py-1.5 text-[9px] uppercase font-bold tracking-widest font-mono ${isLight ? 'text-slate-400' : 'text-slate-500'}`,
     chatItem: (isActive: boolean) => {
       if (isActive) {
-        return isLight ? 'bg-blue-500/10 border-l-2 border-l-blue-600 border-b border-slate-100' : 'bg-indigo-600/10 border-l-2 border-l-indigo-500 border-b border-slate-900/40';
+        return isLight 
+          ? `bg-blue-500/10 border-l-2 border-l-blue-600 border-b border-slate-100` 
+          : `bg-indigo-600/10 border-l-2 border-l-indigo-500 border-b border-white/5`;
       }
-      return isLight ? 'hover:bg-slate-50 border-b border-slate-100' : 'hover:bg-slate-900/30 border-b border-slate-900/40';
+      return `hover:bg-black/5 dark:hover:bg-white/5 border-b border-black/[0.03] dark:border-white/[0.03]`;
     },
-    chatPartnerName: isLight ? 'font-bold text-xs text-slate-800 flex items-center gap-0.5' : 'font-bold text-xs text-slate-200 flex items-center gap-0.5',
-    chatLastMsg: isLight ? 'text-[10px] text-slate-500 line-clamp-1 mt-0.5 max-w-[150px]' : 'text-[10px] text-slate-400 line-clamp-1 mt-0.5 max-w-[150px]',
-    chatTime: isLight ? 'text-[9px] text-slate-400 font-mono' : 'text-[9px] text-slate-500 font-mono'
+    chatPartnerName: `font-bold text-xs flex items-center gap-0.5 ${isLight ? 'text-slate-800' : 'text-slate-200'}`,
+    chatLastMsg: `text-[10px] line-clamp-1 mt-0.5 max-w-[150px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`,
+    chatTime: `text-[9px] font-mono ${isLight ? 'text-slate-400' : 'text-slate-500'}`
   };
 
   return (
@@ -308,18 +313,27 @@ export default function Sidebar({
       
       {/* USER PROFILE CARD HEADER */}
       <div className={themeClasses.header}>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Hamburger Menu icon for mobile */}
+          <button 
+            onClick={onOpenMobileMenu}
+            className="sm:hidden p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center flex-shrink-0"
+            title="Open Menu"
+          >
+            <Menu className="w-5 h-5 text-slate-400" />
+          </button>
+
+          <div className="relative flex-shrink-0">
             <img src={profile.photoURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover border border-slate-300" />
             <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${profile.stealthMode ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
           </div>
-          <div>
+          <div className="min-w-0">
             <h3 className={themeClasses.headerText}>{profile.displayName}</h3>
             <p className={themeClasses.usernameText}>@{profile.username}</p>
           </div>
         </div>
 
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-shrink-0">
           <button 
             onClick={() => setShowQR(true)}
             title="My QR Code"
@@ -463,7 +477,7 @@ export default function Sidebar({
       </div>
 
       {/* LOGOUT TRAIL */}
-      <div className="p-3.5 border-t border-neutral-800 bg-[#0E1013]/40 flex flex-col gap-2">
+      <div className={`p-3.5 border-t ${activeThemeObj.border} bg-black/5 flex flex-col gap-2`}>
         <div className="flex items-center justify-between text-[10px] text-neutral-500 font-mono">
           <div className="flex items-center gap-1">
             <AppLogo className="w-4 h-4" />
@@ -476,7 +490,7 @@ export default function Sidebar({
             <LogOut className="w-3.5 h-3.5" /> Sign Out
           </button>
         </div>
-        <div className="text-[9px] text-neutral-600 font-bold tracking-widest text-center uppercase border-t border-neutral-800/20 pt-2.5 font-mono">
+        <div className={`text-[9px] ${isLight ? 'text-slate-400 border-slate-100' : 'text-neutral-600 border-white/5'} font-bold tracking-widest text-center uppercase border-t pt-2.5 font-mono`}>
           DEVELOPED BY OXA LLC • AFNAN WAZIR
         </div>
       </div>
