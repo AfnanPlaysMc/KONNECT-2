@@ -293,6 +293,17 @@ export default function ChatWindow({
   const callRingNode = useRef<any>(null);
   const jitsiApiRef = useRef<any>(null);
 
+  // Google AdSense auto-pusher initialization
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+      }
+    } catch (e) {
+      console.warn("ChatWindow AdSense push handled:", e);
+    }
+  }, []);
+
   // Initialize official Jitsi Meet External API when call is connected
   useEffect(() => {
     if (callSession?.status === 'connected' && callSession.roomId) {
@@ -367,6 +378,26 @@ export default function ChatWindow({
       };
     }
   }, [callSession?.status, callSession?.roomId, callSession?.type]);
+
+  // Auto-restart connected call at 4:58 (298 seconds) to bypass 5-minute public room limitation dynamically and seamlessly.
+  useEffect(() => {
+    if (callSession?.status === 'connected' && callSession?.roomId && callTimer >= 298) {
+      if (callSession.callerId === myProfile.uid) {
+        // Regenerate room ID and update Firestore chat doc
+        const newRoomId = `konnect_jitsi_${chatId}_${Date.now().toString(36)}`;
+        console.log(`[Call Manager] Reaching 4:58 limit. Auto-re-routing caller to fresh room: ${newRoomId}`);
+        updateDoc(doc(db, 'chats', chatId), {
+          'activeCall.roomId': newRoomId
+        }).catch(err => {
+          console.error("Failed to auto-restart Jitsi call:", err);
+        });
+      } else {
+        console.log(`[Call Manager] Reaching 4:58 limit. Receiver auto-re-routing alongside caller.`);
+      }
+      // Reset call timer to 0 so we count the next 5 minutes afresh
+      setCallTimer(0);
+    }
+  }, [callTimer, callSession?.status, callSession?.roomId, callSession?.callerId, chatId, myProfile.uid]);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -2215,6 +2246,20 @@ export default function ChatWindow({
                   </button>
                 </div>
               )}
+
+              {/* Subtle sponsor card */}
+              <div className="pt-4 border-t border-slate-900/40 flex flex-col items-center">
+                <span className="text-[8px] font-mono tracking-widest text-slate-500 uppercase mb-1.5">Sponsored Space</span>
+                <div className="w-full bg-[#070a0f] p-1.5 rounded-xl border border-slate-900/60 overflow-hidden flex items-center justify-center min-h-[50px] max-h-[50px]">
+                  <ins className="adsbygoogle"
+                       style={{ display: 'block', width: '100%', height: '50px' }}
+                       data-ad-client="ca-pub-8435369808017114"
+                       data-ad-slot="8435369808"
+                       data-ad-format="horizontal"
+                       data-full-width-responsive="false"></ins>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>

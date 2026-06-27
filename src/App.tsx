@@ -521,10 +521,10 @@ export default function App() {
   };
 
   return (
-    <div className={`h-screen h-[100dvh] w-screen overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 md:p-6 transition-all duration-300`}>
+    <div className={`h-screen h-[100dvh] w-screen overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 transition-all duration-300`}>
       
       {/* Sleek dashboard card frame */}
-      <div className={`w-full max-w-6xl h-full md:h-[calc(100vh-3rem)] md:max-h-[720px] ${activeThemeObj.card} border-0 md:border ${activeThemeObj.border} md:rounded-2xl flex overflow-hidden shadow-2xl relative`}>
+      <div className={`w-full h-full ${activeThemeObj.card} flex overflow-hidden shadow-2xl relative`}>
         
         {/* Mobile Left Sidebar overlay backdrop */}
         {mobileMenuOpen && (
