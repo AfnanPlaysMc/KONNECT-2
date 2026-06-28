@@ -8,8 +8,18 @@ import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import Settings from './components/Settings';
 import Stories from './components/Stories';
-import GamesHub from './components/GamesHub';
-import { MessageSquare, Shield, Gamepad2, Film, Sparkles, RefreshCw } from 'lucide-react';
+import { MessageSquare, Shield, Trophy, Film, Sparkles, RefreshCw } from 'lucide-react';
+
+// @ts-ignore
+import orionAiLogo from './assets/images/orion_ai_logo_1782673841547.jpg';
+// @ts-ignore
+import oxaLlcLogo from './assets/images/oxa_llc_logo_1782673859506.jpg';
+
+const getBotPhotoURL = (uid: string, url: string | undefined): string => {
+  if (uid === 'orion-ai') return orionAiLogo;
+  if (uid === 'oxa-llc') return oxaLlcLogo;
+  return url || '';
+};
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -21,8 +31,6 @@ export default function App() {
   // Modal displays
   const [showSettings, setShowSettings] = useState(false);
   const [showStories, setShowStories] = useState(false);
-  const [showGames, setShowGames] = useState(false);
-  const [initialLaunchGameId, setInitialLaunchGameId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -97,7 +105,7 @@ export default function App() {
             uid: 'orion-ai',
             displayName: 'Orion AI',
             username: 'orion_ai',
-            photoURL: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
+            photoURL: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=150',
             bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
             welcomeMessage: "Hello! I am Orion AI, your E2EE intelligent assistant. Type any secure query or prompt and I will decode it right away."
           },
@@ -105,7 +113,7 @@ export default function App() {
             uid: 'oxa-llc',
             displayName: 'Oxa LLC',
             username: 'oxa_llc',
-            photoURL: 'https://images.unsplash.com/photo-1614741118887-7a4ee193a5fa?w=150',
+            photoURL: 'https://images.unsplash.com/photo-1634973357973-f2ed255753e1?w=150',
             bio: 'Official developers of the Konnect secure suite. Contact us for security audits or premium features.',
             welcomeMessage: "Welcome to Konnect! We are Oxa LLC, the development team behind this secure messaging platform. Feel free to explore our settings, premium features, and arcade. Let us know if you find any security bugs!"
           }
@@ -245,6 +253,153 @@ export default function App() {
     };
   }, [profile]);
 
+  // Request browser native notification permission automatically on load / login
+  useEffect(() => {
+    if (profile && typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(err => {
+          console.warn("Failed to request native notification permission automatically:", err);
+        });
+      }
+    }
+  }, [profile]);
+
+  // For beautiful in-app notifications
+  const [activeNotification, setActiveNotification] = useState<{
+    type: 'message' | 'call';
+    title: string;
+    body: string;
+    icon: string;
+    onClick: () => void;
+  } | null>(null);
+
+  const triggerNotification = (notif: {
+    type: 'message' | 'call';
+    title: string;
+    body: string;
+    icon: string;
+    onClick: () => void;
+  }) => {
+    // 1. Show browser native notification if permitted
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        const nativeNotif = new Notification(notif.title, {
+          body: notif.body,
+          icon: notif.icon,
+        });
+        nativeNotif.onclick = () => {
+          window.focus();
+          notif.onClick();
+          nativeNotif.close();
+        };
+      } catch (err) {
+        console.warn("Native Notification failed, falling back to in-app toast", err);
+      }
+    }
+
+    // 2. Also show in-app custom notification toast so it displays the styled layout beautifully
+    setActiveNotification(notif);
+    // Auto-dismiss in-app notification after 5 seconds
+    setTimeout(() => {
+      setActiveNotification(current => current === notif ? null : current);
+    }, 5000);
+  };
+
+  // Listen to incoming messages and calls globally
+  useEffect(() => {
+    if (!profile) return;
+
+    // Listen to all chats for this user
+    const q = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', profile.uid)
+    );
+
+    let isInitialLoad = true;
+
+    // Keep track of processed message IDs or timestamps to avoid duplicates on initial sync
+    const lastNotifiedTimestamps: Record<string, any> = {};
+
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      if (isInitialLoad) {
+        snapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          const chatId = docSnap.id;
+          if (data.lastMessage?.timestamp) {
+            lastNotifiedTimestamps[chatId] = data.lastMessage.timestamp;
+          }
+        });
+        isInitialLoad = false;
+        return;
+      }
+
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        const chatId = docSnap.id;
+        const lastMsg = data.lastMessage;
+        const activeCall = data.activeCall;
+
+        // 1. Check for incoming messages
+        if (lastMsg && lastMsg.senderId !== profile.uid && lastMsg.senderId !== 'orion-ai' && lastMsg.senderId !== 'oxa-llc') {
+          const storedTs = lastNotifiedTimestamps[chatId];
+          const newTs = lastMsg.timestamp;
+          
+          if (newTs) {
+            const storedTime = storedTs 
+              ? (storedTs.toDate ? storedTs.toDate().getTime() : new Date(storedTs).getTime()) 
+              : 0;
+            const newTime = newTs.toDate ? newTs.toDate().getTime() : new Date(newTs).getTime();
+
+            if (newTime > storedTime) {
+              lastNotifiedTimestamps[chatId] = newTs;
+
+              // Don't notify if we are currently looking at this active chat
+              if (activeChatId !== chatId) {
+                const senderId = lastMsg.senderId;
+                const senderProfile = profilesMap[senderId];
+                if (senderProfile) {
+                  triggerNotification({
+                    type: 'message',
+                    title: `${senderProfile.displayName} SENT A MESSAGE!`,
+                    body: `TAP TO VIEW IT`,
+                    icon: getBotPhotoURL(senderProfile.uid, senderProfile.photoURL),
+                    onClick: () => {
+                      handleSelectChat(chatId, senderProfile);
+                    }
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // 2. Check for incoming calls
+        if (activeCall && activeCall.status === 'ringing' && activeCall.receiverId === profile.uid) {
+          const callSessionKey = `call_notified_${activeCall.id}`;
+          if (!sessionStorage.getItem(callSessionKey)) {
+            sessionStorage.setItem(callSessionKey, 'true');
+
+            const callerId = activeCall.callerId;
+            const callerProfile = profilesMap[callerId];
+            if (callerProfile) {
+              triggerNotification({
+                type: 'call',
+                title: `${callerProfile.displayName} INCOMING CALL!`,
+                body: `TAP TO ACCEPT OR DECLINE`,
+                icon: getBotPhotoURL(callerProfile.uid, callerProfile.photoURL),
+                onClick: () => {
+                  handleSelectChat(chatId, callerProfile);
+                }
+              });
+            }
+          }
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [profile, activeChatId, profilesMap]);
+
   const handleAuthSuccess = (newProfile: UserProfile) => {
     setProfile(newProfile);
     setUser(auth.currentUser);
@@ -256,7 +411,6 @@ export default function App() {
 
   const navigateToDashboard = () => {
     setShowStories(false);
-    setShowGames(false);
     setShowSettings(false);
     setActiveChatId(null);
     setActivePartner(null);
@@ -268,7 +422,6 @@ export default function App() {
 
   const navigateToStories = () => {
     setShowStories(true);
-    setShowGames(false);
     setShowSettings(false);
     setMobileMenuOpen(false);
     if (window.location.pathname !== '/stories') {
@@ -276,21 +429,9 @@ export default function App() {
     }
   };
 
-  const navigateToArcade = (gameId: string | null = null) => {
-    setInitialLaunchGameId(gameId);
-    setShowGames(true);
-    setShowStories(false);
-    setShowSettings(false);
-    setMobileMenuOpen(false);
-    if (window.location.pathname !== '/arcade') {
-      window.history.pushState(null, '', '/arcade');
-    }
-  };
-
   const navigateToSettings = () => {
     setShowSettings(true);
     setShowStories(false);
-    setShowGames(false);
     setMobileMenuOpen(false);
     if (window.location.pathname !== '/settings') {
       window.history.pushState(null, '', '/settings');
@@ -301,7 +442,6 @@ export default function App() {
     setActiveChatId(chatId);
     setActivePartner(partner);
     setShowStories(false);
-    setShowGames(false);
     setShowSettings(false);
     setMobileMenuOpen(false);
     const targetPath = `/chat/friends/${partner.uid}`;
@@ -318,13 +458,12 @@ export default function App() {
         uid: 'orion-ai',
         displayName: 'Orion AI',
         username: 'orion_ai',
-        photoURL: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
+        photoURL: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=150',
         bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
         status: 'online',
         theme: 'deep-dark'
       } as UserProfile);
       setShowStories(false);
-      setShowGames(false);
       setShowSettings(false);
       setMobileMenuOpen(false);
       const targetPath = `/chat/friends/orion-ai`;
@@ -356,7 +495,6 @@ export default function App() {
         setActiveChatId(foundChatId);
         setActivePartner(friendProfile);
         setShowStories(false);
-        setShowGames(false);
         setShowSettings(false);
         setMobileMenuOpen(false);
         const targetPath = `/chat/friends/${friendUid}`;
@@ -381,7 +519,6 @@ export default function App() {
         setActiveChatId(newChatRef.id);
         setActivePartner(friendProfile);
         setShowStories(false);
-        setShowGames(false);
         setShowSettings(false);
         setMobileMenuOpen(false);
         const targetPath = `/chat/friends/${friendUid}`;
@@ -407,15 +544,13 @@ export default function App() {
         }
       } else if (path === '/stories') {
         setShowStories(true);
-        setShowGames(false);
         setShowSettings(false);
-      } else if (path === '/arcade') {
+      } else if (path === '/sports') {
         setShowStories(false);
-        setShowGames(true);
         setShowSettings(false);
+        window.history.replaceState(null, '', '/konnectmain');
       } else if (path === '/settings') {
         setShowStories(false);
-        setShowGames(false);
         setShowSettings(true);
       } else if (path === '/signinsignup') {
         window.history.replaceState(null, '', '/konnectmain');
@@ -435,25 +570,22 @@ export default function App() {
 
       if (path === '/konnectmain' || path === '/' || path === '/signinsignup') {
         setShowStories(false);
-        setShowGames(false);
         setShowSettings(false);
         setActiveChatId(null);
         setActivePartner(null);
       } else if (path === '/stories') {
         setShowStories(true);
-        setShowGames(false);
         setShowSettings(false);
         setActiveChatId(null);
         setActivePartner(null);
-      } else if (path === '/arcade') {
+      } else if (path === '/sports') {
         setShowStories(false);
-        setShowGames(true);
         setShowSettings(false);
         setActiveChatId(null);
         setActivePartner(null);
+        window.history.replaceState(null, '', '/konnectmain');
       } else if (path === '/settings') {
         setShowStories(false);
-        setShowGames(false);
         setShowSettings(true);
         setActiveChatId(null);
         setActivePartner(null);
@@ -521,7 +653,7 @@ export default function App() {
   };
 
   return (
-    <div className={`h-screen h-[100dvh] w-screen overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 transition-all duration-300`}>
+    <div className={`h-screen h-[100dvh] w-full max-w-full overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 transition-all duration-300`}>
       
       {/* Sleek dashboard card frame */}
       <div className={`w-full h-full ${activeThemeObj.card} flex overflow-hidden shadow-2xl relative`}>
@@ -548,7 +680,7 @@ export default function App() {
           <nav className="flex flex-col gap-6 flex-1 text-neutral-400">
             <button 
               onClick={navigateToDashboard}
-              className={getNavBtnClass(!activeChatId && !showStories && !showGames && !showSettings)}
+              className={getNavBtnClass(!activeChatId && !showStories && !showSettings)}
               title="Dashboard"
             >
               <MessageSquare className="w-5 h-5" />
@@ -559,13 +691,6 @@ export default function App() {
               title="Stories"
             >
               <Film className="w-5 h-5" />
-            </button>
-            <button 
-              onClick={() => navigateToArcade()}
-              className={getNavBtnClass(showGames)}
-              title="Arcade"
-            >
-              <Gamepad2 className="w-5 h-5" />
             </button>
             <button 
               onClick={navigateToSettings}
@@ -589,7 +714,7 @@ export default function App() {
           onSelectChat={handleSelectChat}
           onOpenSettings={navigateToSettings}
           onOpenStories={navigateToStories}
-          onOpenGames={() => navigateToArcade()}
+          onOpenSports={() => {}}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
         />
 
@@ -600,8 +725,8 @@ export default function App() {
               chatId={activeChatId}
               myProfile={profile}
               partnerProfile={activePartner}
-              onOpenGames={() => navigateToArcade()}
-              onSetGameChallenge={(gameId) => navigateToArcade(gameId)}
+              onOpenGames={() => {}}
+              onSetGameChallenge={() => {}}
               onCloseChat={navigateToDashboard}
               profilesMap={profilesMap}
             />
@@ -620,7 +745,7 @@ export default function App() {
                 Welcome to Konnect Space
               </h2>
               <p className="text-[11px] text-slate-500 max-w-sm mt-2 leading-relaxed">
-                Connect seamlessly with direct scanning, customized spaces, stealth activity toggles, and play over 20 mini-games inside active channels.
+                Connect seamlessly with direct scanning, customized spaces, and stealth activity toggles.
               </p>
 
               <div className="mt-6 flex gap-3">
@@ -629,12 +754,6 @@ export default function App() {
                   className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800/80 rounded-xl text-[10px] font-bold text-slate-300 flex items-center gap-1.5 transition active:scale-95 shadow"
                 >
                   <Film className="w-3.5 h-3.5 text-indigo-400" /> View Stories
-                </button>
-                <button 
-                  onClick={() => setShowGames(true)}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-[10px] font-bold text-white flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-indigo-600/10"
-                >
-                  <Gamepad2 className="w-3.5 h-3.5 text-white" /> Open Arcade
                 </button>
               </div>
             </div>
@@ -650,59 +769,6 @@ export default function App() {
           />
         )}
 
-        {/* OVERLAY MODAL: ARCADE PORTAL */}
-        {showGames && (
-          <div className="absolute inset-0 z-40 bg-[#07090e]/95 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="w-full max-w-md h-full max-h-[540px] md:h-[540px] bg-[#0c1017] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-              <GamesHub 
-                onClose={() => setShowGames(false)}
-                activeFriendId={activePartner?.uid}
-                activeFriendName={activePartner?.displayName}
-                initialLaunchGameId={initialLaunchGameId}
-                onSendGameResult={async (gameId, gameName, score, resultText) => {
-                  if (activeChatId && activePartner) {
-                    // Update latest game match info inside chat conversation
-                    const customMessageText = `🎮 Play Result: ${resultText}`;
-                    const payload = {
-                      senderId: profile.uid,
-                      receiverId: activePartner.uid,
-                      text: customMessageText,
-                      timestamp: new Date(),
-                      type: 'game_result' as const,
-                      read: false,
-                      gameInfo: {
-                        gameId,
-                        gameName,
-                        status: 'completed' as const,
-                        turnUid: activePartner.uid,
-                        score: {
-                          [profile.uid]: score
-                        },
-                        winnerUid: score > 0 ? profile.uid : score === 0 ? activePartner.uid : undefined,
-                        state: null
-                      }
-                    };
-                    try {
-                      const messagesColl = collection(db, 'chats', activeChatId, 'messages');
-                      await setDoc(doc(messagesColl), payload);
-                      await updateDoc(doc(db, 'chats', activeChatId), {
-                        lastMessage: {
-                          text: customMessageText,
-                          timestamp: new Date(),
-                          senderId: profile.uid
-                        }
-                      });
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }
-                  setShowGames(false);
-                }}
-              />
-            </div>
-          </div>
-        )}
-
         {/* OVERLAY MODAL: SETTINGS PANEL */}
         {showSettings && (
           <Settings 
@@ -710,6 +776,38 @@ export default function App() {
             onUpdateProfile={handleUpdateProfileState}
             onClose={() => setShowSettings(false)}
           />
+        )}
+
+        {/* BEAUTIFUL IN-APP FLOATING NOTIFICATION TOAST */}
+        {activeNotification && (
+          <div 
+            onClick={() => {
+              activeNotification.onClick();
+              setActiveNotification(null);
+            }}
+            className="fixed top-4 right-4 z-[9999] w-full max-w-[320px] bg-[#0c1017] border-2 border-indigo-500/30 rounded-2xl p-3.5 shadow-[0_10px_30px_rgba(0,0,0,0.5)] cursor-pointer hover:border-indigo-500 hover:bg-[#101520] transition-all duration-300 animate-slide-in flex gap-3 items-center select-none"
+          >
+            <img 
+              src={activeNotification.icon} 
+              alt="" 
+              className="w-10 h-10 rounded-full object-cover border border-slate-700 flex-shrink-0" 
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col">
+                <span className="text-[11px] text-white font-sans font-bold truncate">
+                  {activeNotification.type === 'message' 
+                    ? activeNotification.title.replace(' SENT A MESSAGE!', '') 
+                    : activeNotification.title.replace(' INCOMING CALL!', '')}
+                </span>
+                <span className="text-[9px] uppercase font-mono tracking-widest text-emerald-400 mt-0.5 font-bold">
+                  {activeNotification.type === 'message' ? 'SENT A MESSAGE!' : 'INCOMING CALL!'}
+                </span>
+              </div>
+              <p className="text-[9px] text-blue-400 font-bold font-mono mt-1 uppercase tracking-wide">
+                {activeNotification.type === 'message' ? 'TAP TO VIEW IT' : 'TAP TO ACCEPT OR DECLINE'}
+              </p>
+            </div>
+          </div>
         )}
 
       </div>

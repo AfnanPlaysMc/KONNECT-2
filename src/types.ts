@@ -109,7 +109,9 @@ export const THEMES = [
   { id: 'midnight-blue', name: 'Midnight Ocean', bg: 'bg-[#0b132b]', border: 'border-[#1c2541]', text: 'text-[#e0e1dd]', card: 'bg-[#1c2541]', primary: 'bg-[#3a86c8]', accent: 'text-[#3a86c8]' },
   { id: 'emerald', name: 'Emerald Cyber', bg: 'bg-[#05110c]', border: 'border-[#0a2f1d]', text: 'text-[#e6f4ea]', card: 'bg-[#081e14]', primary: 'bg-[#10b981]', accent: 'text-[#10b981]' },
   { id: 'crimson-velvet', name: 'Crimson Night', bg: 'bg-[#140507]', border: 'border-[#300a0d]', text: 'text-[#fbeef0]', card: 'bg-[#20080a]', primary: 'bg-[#e11d48]', accent: 'text-[#f43f5e]' },
-  { id: 'cyberpunk', name: 'Neon Cyber', bg: 'bg-[#0d0211]', border: 'border-[#2a0835]', text: 'text-[#fae8ff]', card: 'bg-[#1a0522]', primary: 'bg-[#d946ef]', accent: 'text-[#f472b6]' }
+  { id: 'cyberpunk', name: 'Neon Cyber', bg: 'bg-[#0d0211]', border: 'border-[#2a0835]', text: 'text-[#fae8ff]', card: 'bg-[#1a0522]', primary: 'bg-[#d946ef]', accent: 'text-[#f472b6]' },
+  { id: 'football', name: 'Football Pitch', bg: 'bg-[#0b2413]', border: 'border-[#1b4325]', text: 'text-[#ecfdf5]', card: 'bg-[#12301a]', primary: 'bg-[#10b981]', accent: 'text-[#34d399]' },
+  { id: 'cricket', name: 'Cricket Ground', bg: 'bg-[#1c1917]', border: 'border-[#443e38]', text: 'text-[#fafaf9]', card: 'bg-[#292524]', primary: 'bg-[#ea580c]', accent: 'text-[#f97316]' }
 ];
 
 export const NOTIFICATION_SOUNDS = [
@@ -119,17 +121,4 @@ export const NOTIFICATION_SOUNDS = [
   { id: 'pop', name: 'Bubble Pop' },
   { id: 'retro', name: '8-Bit Beep' },
   { id: 'synth', name: 'Synth Drop' }
-];
-
-export const STICKERS = [
-  { id: 'k_hello', name: 'Konnect Hello', emoji: '👋', anim: 'animate-bounce' },
-  { id: 'k_love', name: 'Heart Pulse', emoji: '❤️', anim: 'animate-pulse' },
-  { id: 'k_fire', name: 'Super Hot', emoji: '🔥', anim: 'animate-pulse' },
-  { id: 'k_party', name: 'Celebration', emoji: '🎉', anim: 'animate-wiggle' },
-  { id: 'k_laugh', name: 'LOL Spin', emoji: '😂', anim: 'hover:rotate-12 duration-200' },
-  { id: 'k_mindblown', name: 'Mind Blown', emoji: '🤯', anim: 'scale-110' },
-  { id: 'k_cool', name: 'Cool Swag', emoji: '😎', anim: 'translate-y-1' },
-  { id: 'k_dance', name: 'Groovy Disco', emoji: '🕺', anim: 'animate-bounce' },
-  { id: 'k_game', name: 'Game Time', emoji: '🎮', anim: 'animate-pulse' },
-  { id: 'k_call', name: 'Call Me', emoji: '🤙', anim: 'animate-bounce' }
 ];

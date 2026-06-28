@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
 import { 
   Phone, Video, MoreVertical, Send, Smile, Play, Pause, RefreshCw, 
   Smile as EmojiIcon, ShieldAlert, BadgeHelp, EyeOff, Film, Ban,
   Volume2, Mic, Check, CheckCheck, Gamepad2, Sparkles, Image, Zap, Flame, User, X,
-  Plus, ArrowLeft, Search, PhoneOff, Settings as SettingsIcon, Crown, UserPlus, UserMinus, Maximize2, Minimize2
+  Plus, ArrowLeft, Search, PhoneOff, Settings as SettingsIcon, Crown, UserPlus, UserMinus, Maximize2, Minimize2, Download
 } from 'lucide-react';
 import { 
   collection, query, orderBy, onSnapshot, addDoc, updateDoc, 
@@ -11,14 +12,15 @@ import {
   increment, deleteDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { UserProfile, Message, STICKERS, LIST_OF_GAMES } from '../types';
+import { UserProfile, Message, LIST_OF_GAMES } from '../types';
 import { EMOJI_LIST } from '../emojis';
 import { SecureAvatar } from './SecureAvatar';
 import { VerifiedBadge } from './VerifiedBadge';
+
 // @ts-ignore
-import fwc26TriondaEmoji from '../assets/images/fwc26_trionda_emoji_1782495872803.jpg';
+import orionAiLogo from '../assets/images/orion_ai_logo_1782673841547.jpg';
 // @ts-ignore
-import fwcTrophyEmoji from '../assets/images/fwc_trophy_emoji_1782495891689.jpg';
+import oxaLlcLogo from '../assets/images/oxa_llc_logo_1782673859506.jpg';
 
 declare global {
   interface Window {
@@ -26,87 +28,105 @@ declare global {
   }
 }
 
-// Custom 3D WhatsApp style Real Emoji renderer for FIFA World Cup 2026 soccer ball and trophy cup
-const renderMessageContent = (text: string) => {
-  const trimmed = text.trim();
-  if (trimmed === '⚽') {
-    return (
-      <div className="flex flex-col items-center py-2 cursor-pointer group select-none max-w-[240px] mx-auto text-center">
-        <div className="relative">
-          <img 
-            src={fwc26TriondaEmoji} 
-            alt="⚽ FIFA World Cup 2026 TRIONDA REAL EMOJI" 
-            className="w-28 h-28 object-cover rounded-3xl border-2 border-slate-700/50 shadow-2xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-6"
-          />
-          <span className="absolute -top-2 -right-2 bg-gradient-to-r from-yellow-400 to-amber-500 text-[9px] text-slate-950 px-2 py-0.5 rounded-full font-sans font-bold shadow-md animate-pulse">
-            TRIONDA
-          </span>
-        </div>
-        <span className="text-[9px] text-slate-400 mt-2 font-mono">
-          FIFA World Cup 2026™ Real Emoji
-        </span>
-      </div>
-    );
-  }
-  if (trimmed === '🏆') {
-    return (
-      <div className="flex flex-col items-center py-2 cursor-pointer group select-none max-w-[240px] mx-auto text-center">
-        <div className="relative">
-          <img 
-            src={fwcTrophyEmoji} 
-            alt="🏆 FIFA World Cup Trophy" 
-            className="w-28 h-28 object-cover rounded-3xl border-2 border-slate-700/50 shadow-2xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-6"
-          />
-          <span className="absolute -top-2 -right-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-[9px] text-white px-2 py-0.5 rounded-full font-sans font-bold shadow-md animate-pulse">
-            TROPHY
-          </span>
-        </div>
-        <span className="text-[9px] text-slate-400 mt-2 font-mono">
-          FIFA World Cup Trophy™ Real Emoji
-        </span>
-      </div>
-    );
-  }
+const getBotPhotoURL = (uid: string, url: string | undefined): string => {
+  if (uid === 'orion-ai') return orionAiLogo;
+  if (uid === 'oxa-llc') return oxaLlcLogo;
+  return url || '';
+};
 
-  // Parse inline emojis (⚽ and 🏆)
-  const regex = /(⚽|🏆)/g;
-  const parts = text.split(regex);
+const getAnimatedEmojiUrl = (emoji: string) => {
+  // Convert emoji to sequence of code points
+  const codePoints = Array.from(emoji)
+    .map(char => char.codePointAt(0)?.toString(16))
+    .filter(hex => hex && hex !== 'fe0f'); // remove variation selectors
+  
+  const hexStr = codePoints.join('_');
+  return `https://fonts.gstatic.com/s/e/notoemoji/latest/${hexStr}/512.webp`;
+};
+
+// Component that resolves an external image to a local blob URL
+// This hides "pollinations.ai" domain and sets tab title to local domain when dragged or opened in a tab.
+const SecureImage = ({ src, className, ...props }: { src: string; className?: string; [key: string]: any }) => {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!src) return;
+    
+    // If it's already a blob or data URL, use it directly
+    if (src.startsWith('blob:') || src.startsWith('data:')) {
+      setBlobUrl(src);
+      return;
+    }
+
+    // Otherwise, fetch and convert to blob url
+    fetch(src)
+      .then(res => res.blob())
+      .then(blob => {
+        if (active) {
+          const url = URL.createObjectURL(blob);
+          setBlobUrl(url);
+        }
+      })
+      .catch(err => {
+        console.warn("Failed to create blob URL for image:", err);
+        if (active) {
+          setBlobUrl(src); // Fallback to raw URL if CORS fails
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [src]);
+
+  return (
+    <img 
+      src={blobUrl || src} 
+      className={className} 
+      {...props} 
+    />
+  );
+};
+
+// General-purpose 3D animated Noto Emoji parser
+const renderMessageContent = (text: string) => {
+  if (!text) return null;
+
+  // Emoji regex to match standard emoji characters
+  const EMOJI_REGEX = /(\p{Emoji_Presentation})/gu;
+  const parts = text.split(EMOJI_REGEX);
+  
   if (parts.length === 1) {
     return <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap">{text}</p>;
   }
 
   return (
-    <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap flex flex-wrap items-center gap-1">
+    <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap inline-flex flex-wrap items-center gap-1.5 py-0.5">
       {parts.map((part, i) => {
-        if (part === '⚽') {
+        if (part && part.match(/\p{Emoji_Presentation}/u)) {
           return (
-            <span key={i} className="inline-flex items-center group relative cursor-pointer mx-0.5">
-              <img 
-                src={fwc26TriondaEmoji} 
-                alt="⚽" 
-                className="w-5 h-5 object-cover rounded-md border border-slate-700 shadow-sm transition hover:scale-150 z-10"
-              />
-              <span className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-950 text-[8px] text-yellow-400 font-sans px-1.5 py-0.5 rounded border border-slate-800 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-20 pointer-events-none shadow-lg">
-                TRIONDA Real Emoji
-              </span>
-            </span>
+            <img 
+              key={i}
+              src={getAnimatedEmojiUrl(part)} 
+              alt={part} 
+              className="w-5.5 h-5.5 object-contain inline-block align-middle transform hover:scale-115 transition-all duration-150"
+              onError={(evt) => {
+                // Fall back to text if WebP fails to load
+                (evt.target as HTMLElement).style.display = 'none';
+                const parent = (evt.target as HTMLElement).parentElement;
+                if (parent && !parent.querySelector(`.fallback-emoji-${i}`)) {
+                  const span = document.createElement('span');
+                  span.className = `text-xs fallback-emoji-${i} align-middle`;
+                  span.innerText = part;
+                  parent.insertBefore(span, evt.target as HTMLElement);
+                }
+              }}
+              referrerPolicy="no-referrer"
+            />
           );
         }
-        if (part === '🏆') {
-          return (
-            <span key={i} className="inline-flex items-center group relative cursor-pointer mx-0.5">
-              <img 
-                src={fwcTrophyEmoji} 
-                alt="🏆" 
-                className="w-5 h-5 object-cover rounded-md border border-slate-700 shadow-sm transition hover:scale-150 z-10"
-              />
-              <span className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-950 text-[8px] text-indigo-400 font-sans px-1.5 py-0.5 rounded border border-slate-800 opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-20 pointer-events-none shadow-lg">
-                FIFA Trophy Real Emoji
-              </span>
-            </span>
-          );
-        }
-        return <span key={i}>{part}</span>;
+        return <span key={i} className="align-middle">{part}</span>;
       })}
     </p>
   );
@@ -130,13 +150,11 @@ export default function ChatWindow({
   const [inputText, setInputText] = useState('');
   
   // Drawer Toggles
-  const [showStickers, setShowStickers] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
   const [emojiSearch, setEmojiSearch] = useState('');
   const [showPartnerProfileDrawer, setShowPartnerProfileDrawer] = useState(false);
   
   // New optimized states
-  const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchText, setSearchText] = useState('');
   
@@ -162,6 +180,7 @@ export default function ChatWindow({
   const [isRecording, setIsRecording] = useState(false);
   const [recordDuration, setRecordDuration] = useState(0);
   const recordInterval = useRef<any>(null);
+  const recordDurationRef = useRef<number>(0);
   
   // Real audio recording references
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -389,6 +408,7 @@ export default function ChatWindow({
   }, [callTimer, callSession?.status, callSession?.roomId, callSession?.callerId, chatId, myProfile.uid]);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Real-time typing status variables
   const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
@@ -628,7 +648,11 @@ export default function ChatWindow({
 
   const scrollToBottom = () => {
     setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
     }, 100);
   };
 
@@ -826,14 +850,6 @@ export default function ChatWindow({
     setInputText(prev => prev + emoji);
   };
 
-  const handleSendSticker = async (stickerId: string) => {
-    setShowStickers(false);
-    const sticker = STICKERS.find(s => s.id === stickerId);
-    await sendMessagePayload(`Sent a animated sticker: ${sticker?.emoji}`, 'sticker', {
-      mediaUrl: stickerId
-    });
-  };
-
   const handleAddReaction = async (messageId: string, emoji: string) => {
     try {
       const msgRef = doc(db, 'chats', chatId, 'messages', messageId);
@@ -882,9 +898,14 @@ export default function ChatWindow({
       mediaRecorder.start();
       setIsRecording(true);
       setRecordDuration(0);
+      recordDurationRef.current = 0;
 
       recordInterval.current = setInterval(() => {
-        setRecordDuration(prev => prev + 1);
+        setRecordDuration(prev => {
+          const nextVal = prev + 1;
+          recordDurationRef.current = nextVal;
+          return nextVal;
+        });
       }, 1000);
     } catch (err) {
       console.error("Error accessing microphone:", err);
@@ -900,7 +921,8 @@ export default function ChatWindow({
     const recorder = mediaRecorderRef.current;
     
     recorder.onstop = async () => {
-      if (cancel || recordDuration < 1) {
+      const finalDuration = recordDurationRef.current;
+      if (cancel || finalDuration < 1) {
         if (audioStreamRef.current) {
           audioStreamRef.current.getTracks().forEach(track => track.stop());
         }
@@ -916,9 +938,9 @@ export default function ChatWindow({
       reader.readAsDataURL(audioBlob);
       reader.onloadend = async () => {
         const base64Audio = reader.result as string;
-        await sendMessagePayload(`🎤 Voice Note (${recordDuration}s)`, 'voice', {
+        await sendMessagePayload(`🎤 Voice Note (${finalDuration}s)`, 'voice', {
           mediaUrl: base64Audio,
-          duration: recordDuration
+          duration: finalDuration
         });
       };
 
@@ -928,6 +950,25 @@ export default function ChatWindow({
     };
 
     recorder.stop();
+  };
+
+  // Download generated/shared image as a raw file blob (bypasses navigation redirects)
+  const downloadImage = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `orion_secure_media_${Date.now()}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.warn("Direct blob download failed, falling back to window open:", error);
+      window.open(url, '_blank');
+    }
   };
 
   // Playing synthetic tones OR genuine browser-recorded audio for voice note
@@ -1256,7 +1297,13 @@ export default function ChatWindow({
   };
 
   return (
-    <div className={`flex-1 flex h-full ${isLight ? 'bg-slate-50 text-slate-800' : 'bg-[#0a0d14] text-slate-100'} relative overflow-hidden`}>
+    <motion.div 
+      key={chatId}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.25 }}
+      className={`flex-1 flex h-full ${isLight ? 'bg-slate-50 text-slate-800' : 'bg-[#0a0d14] text-slate-100'} relative overflow-hidden`}
+    >
       
       {/* MAIN CHAT AREA */}
       <div className="flex-1 flex flex-col h-full min-w-0 relative">
@@ -1279,7 +1326,7 @@ export default function ChatWindow({
               title="View profile details"
             >
               <div className="relative flex-shrink-0">
-                <SecureAvatar src={partnerProfile.photoURL || ''} alt="Pfp" className={`w-10 h-10 rounded-full object-cover border ${isLight ? 'border-slate-200' : 'border-slate-800'} transition-all`} />
+                <SecureAvatar src={getBotPhotoURL(partnerProfile.uid, partnerProfile.photoURL)} alt="Pfp" className={`w-10 h-10 rounded-full object-cover border ${isLight ? 'border-slate-200' : 'border-slate-800'} transition-all`} />
                 {!partnerProfile.isGroup && (
                   <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border ${isLight ? 'border-white' : 'border-[#0e121a]'} ${partnerProfile.status === 'online' && !partnerProfile.stealthMode ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
                 )}
@@ -1371,6 +1418,7 @@ export default function ChatWindow({
 
         {/* MESSAGES LOG VIEW */}
         <div 
+          ref={messagesContainerRef}
           className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar relative"
           style={getWallpaperStyle()}
         >
@@ -1406,18 +1454,10 @@ export default function ChatWindow({
                     {/* Standard text message */}
                     {msg.type === 'text' && renderMessageContent(msg.text)}
 
-                    {/* Sticker image */}
+                    {/* Sticker image fallback */}
                     {msg.type === 'sticker' && (
                       <div className="py-1">
-                        {(() => {
-                          const sObj = STICKERS.find((s) => s.id === msg.mediaUrl);
-                          return (
-                            <div className="flex flex-col items-center">
-                              <span className={`text-4xl ${sObj?.anim || ''} select-none`}>{sObj?.emoji || '✨'}</span>
-                              <span className="text-[8px] text-slate-500 mt-1 font-mono">{sObj?.name || 'Sticker'}</span>
-                            </div>
-                          );
-                        })()}
+                        {renderMessageContent(msg.text || '✨ [Animated Sticker]')}
                       </div>
                     )}
 
@@ -1427,7 +1467,7 @@ export default function ChatWindow({
                         onClick={() => setSelectedLightboxImage(msg.mediaUrl)}
                         className="py-1 select-none pointer-events-auto rounded-lg overflow-hidden border border-slate-900 cursor-pointer hover:opacity-90 transition-all duration-200"
                       >
-                        <img 
+                        <SecureImage 
                           src={msg.mediaUrl} 
                           alt="shared secure snapshot" 
                           draggable="false"
@@ -1613,136 +1653,36 @@ export default function ChatWindow({
               />
             </div>
 
-            {/* Featured 3D WhatsApp Real Emojis Section */}
-            {!emojiSearch && (
-              <div className="mb-3 p-2 bg-gradient-to-r from-emerald-950/20 to-indigo-950/20 rounded-xl border border-slate-800/60 flex-shrink-0">
-                <div className="flex items-center justify-between mb-1.5 px-1">
-                  <span className="text-[10px] font-bold text-emerald-400 font-sans tracking-wide">✨ Featured 3D WhatsApp Emojis</span>
-                  <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest font-bold">Real stickers</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setInputText(prev => prev + '⚽'); setShowEmojis(false); }}
-                    className="flex-1 flex items-center gap-2 p-1.5 bg-[#0c1017]/80 hover:bg-[#0c1017] rounded-xl border border-slate-800 hover:border-emerald-500/40 transition active:scale-95 group text-left"
-                    title="FIFA World Cup 2026 TRIONDA REAL EMOJI"
-                  >
-                    <img src={fwc26TriondaEmoji} alt="⚽" className="w-7 h-7 object-cover rounded-lg shadow-md group-hover:scale-110 transition" />
-                    <div>
-                      <h6 className="text-[10px] font-bold text-white leading-tight">World Cup 2026</h6>
-                      <p className="text-[8px] text-slate-500 font-mono mt-0.5">⚽ Ball Emoji</p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => { setInputText(prev => prev + '🏆'); setShowEmojis(false); }}
-                    className="flex-1 flex items-center gap-2 p-1.5 bg-[#0c1017]/80 hover:bg-[#0c1017] rounded-xl border border-slate-800 hover:border-indigo-500/40 transition active:scale-95 group text-left"
-                    title="FIFA World Cup Trophy Real Emoji"
-                  >
-                    <img src={fwcTrophyEmoji} alt="🏆" className="w-7 h-7 object-cover rounded-lg shadow-md group-hover:scale-110 transition" />
-                    <div>
-                      <h6 className="text-[10px] font-bold text-white leading-tight">World Cup Trophy</h6>
-                      <p className="text-[8px] text-slate-500 font-mono mt-0.5">🏆 Trophy Emoji</p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            )}
-            
             <div className="grid grid-cols-8 gap-2 overflow-y-auto custom-scrollbar p-1 max-h-48">
               {EMOJI_LIST.filter(emoji => !emojiSearch || emoji.name.includes(emojiSearch.toLowerCase())).map((e, idx) => {
-                const isRealEmoji = e.emoji === '⚽' || e.emoji === '🏆';
                 return (
                   <button
                     key={idx}
                     onClick={() => { setInputText(prev => prev + e.emoji); setShowEmojis(false); setEmojiSearch(''); }}
-                    className={`text-xl hover:scale-125 transition active:scale-90 p-1.5 flex items-center justify-center rounded-lg relative ${
-                      isRealEmoji 
-                        ? 'bg-amber-500/10 border border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.2)] hover:bg-amber-500/20' 
-                        : 'hover:bg-slate-900'
-                    }`}
-                    title={e.emoji === '⚽' ? "⚽ FIFA World Cup 2026 TRIONDA REAL EMOJI" : e.emoji === '🏆' ? "🏆 FIFA World Cup Trophy Real Emoji" : e.name}
+                    className="hover:scale-125 transition active:scale-90 p-1.5 flex items-center justify-center rounded-lg hover:bg-slate-900 cursor-pointer"
+                    title={e.name}
                   >
-                    {e.emoji}
-                    {isRealEmoji && (
-                      <span className="absolute -bottom-1 -right-1 text-[6px] bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 px-1 py-0.2 rounded font-sans font-extrabold shadow-sm scale-75 uppercase">
-                        3D
-                      </span>
-                    )}
+                    <img 
+                      src={getAnimatedEmojiUrl(e.emoji)} 
+                      alt={e.emoji} 
+                      className="w-6 h-6 object-contain"
+                      onError={(evt) => {
+                        // Fall back to text emoji if WebP fails to load
+                        (evt.target as HTMLElement).style.display = 'none';
+                        const parent = (evt.target as HTMLElement).parentElement;
+                        if (parent && !parent.querySelector('.emoji-text-fallback')) {
+                          const textSpan = document.createElement('span');
+                          textSpan.className = 'text-xl emoji-text-fallback';
+                          textSpan.innerText = e.emoji;
+                          parent.appendChild(textSpan);
+                        }
+                      }}
+                      referrerPolicy="no-referrer"
+                    />
                   </button>
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* STICKER BOX IN-CHAT ATTACHMENT */}
-        {showStickers && (
-          <div className="absolute bottom-16 left-4 right-4 bg-[#0a0d14]/95 border border-slate-900 rounded-2xl p-4 shadow-2xl z-30 animate-slideUp backdrop-blur-md flex flex-col max-h-80">
-            <div className="flex justify-between items-center mb-3 flex-shrink-0">
-              <h5 className="font-bold text-xs text-slate-300 uppercase tracking-widest font-mono">Vector Sticker Packs</h5>
-              <button 
-                onClick={() => setShowStickers(false)} 
-                className="p-1 text-slate-500 hover:text-white transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-5 gap-3 overflow-y-auto custom-scrollbar p-1 max-h-56">
-              {STICKERS.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => handleSendSticker(s.id)}
-                  className="p-2 bg-slate-950 hover:bg-[#0e121a] border border-slate-900 hover:border-indigo-500/40 rounded-xl flex flex-col items-center gap-1.5 transition active:scale-95 group duration-200"
-                >
-                  <span className={`text-3xl select-none group-hover:scale-110 transition duration-200 ${s.anim}`}>{s.emoji}</span>
-                  <span className="text-[8px] text-slate-500 group-hover:text-slate-300 font-mono text-center truncate w-full">{s.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* COMPRESSION ATTACHMENTS SHELF */}
-        {showMediaMenu && (
-          <div className="p-3 bg-[#0d1017] border-t border-slate-900 flex flex-wrap gap-2 animate-slideUp z-10">
-            <button 
-              type="button"
-              onClick={() => { setShowStickers(!showStickers); setShowEmojis(false); setShowMediaMenu(false); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a1d24] text-slate-400 hover:text-white border border-slate-800 rounded-xl text-[10px] font-bold font-mono uppercase tracking-wider transition"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
-              <span>Stickers</span>
-            </button>
-
-            {/* Quick Challenge mini games trigger */}
-            <div className="relative group">
-              <button 
-                type="button"
-                onClick={onOpenGames}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1a1d24] text-slate-400 hover:text-blue-400 border border-slate-800 rounded-xl text-[10px] font-bold font-mono uppercase tracking-wider transition"
-                title="Challenge mini-game"
-              >
-                <Gamepad2 className="w-3.5 h-3.5 text-blue-400" />
-                <span>Launch Arcade</span>
-              </button>
-              {/* Tooltip trigger list */}
-              <div className="hidden group-hover:block absolute bottom-10 left-0 bg-[#0E1013] border border-neutral-800 rounded-xl p-2 w-48 shadow-2xl z-30">
-                <h5 className="text-[9px] uppercase font-bold tracking-widest text-neutral-500 mb-1.5 font-mono">Launch Quick Match</h5>
-                <div className="grid grid-cols-1 gap-1 max-h-28 overflow-y-auto custom-scrollbar">
-                  {LIST_OF_GAMES.filter(g => g.isTwoPlayer).map(game => (
-                    <button
-                      key={game.id}
-                      type="button"
-                      onClick={() => handleChallengeGame(game.id)}
-                      className="w-full text-left px-2 py-1 hover:bg-neutral-800 text-[10px] text-slate-300 hover:text-blue-400 rounded transition font-medium"
-                    >
-                      🎮 {game.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <span className="text-[9px] text-slate-600 font-mono ml-auto">Media & Arcade Hub</span>
           </div>
         )}
 
@@ -1758,23 +1698,13 @@ export default function ChatWindow({
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              {/* Plus toggle button */}
-              <button
-                type="button"
-                onClick={() => setShowMediaMenu(!showMediaMenu)}
-                className={`p-2.5 rounded-xl transition-all duration-200 ${showMediaMenu ? (isLight ? 'bg-blue-50 text-blue-600 rotate-45' : 'bg-indigo-600/20 text-indigo-400 rotate-45') : (isLight ? 'hover:bg-slate-100 text-slate-500 hover:text-slate-800' : 'hover:bg-neutral-800 text-slate-400 hover:text-white')}`}
-                title="Toggle Attachments"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-
               {/* Main message form */}
               <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 items-center">
                 {/* Input field with Smile icon embedded */}
                 <div className="relative flex-1 flex items-center">
                   <button 
                     type="button"
-                    onClick={() => { setShowEmojis(!showEmojis); setShowStickers(false); }}
+                    onClick={() => setShowEmojis(!showEmojis)}
                     className={`absolute left-3.5 transition z-20 ${showEmojis ? 'text-blue-500 scale-110' : (isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-white')}`}
                     title="Toggle Emojis"
                   >
@@ -1818,13 +1748,11 @@ export default function ChatWindow({
                 {inputText.trim().length === 0 ? (
                   <button
                     type="button"
-                    onMouseDown={startRecording}
-                    onMouseUp={() => stopRecording(false)}
-                    onTouchStart={startRecording}
-                    onTouchEnd={() => stopRecording(false)}
                     onClick={() => {
                       if (isRecording) {
                         stopRecording(false);
+                      } else {
+                        startRecording();
                       }
                     }}
                     className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
@@ -1834,7 +1762,7 @@ export default function ChatWindow({
                             ? 'bg-slate-50 border border-slate-200 text-slate-500 hover:text-blue-500' 
                             : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400')
                     }`}
-                    title={isRecording ? "Release or tap to send voice note" : "Hold or click to record voice note"}
+                    title={isRecording ? "Tap to send voice note" : "Tap to record voice note"}
                   >
                     <Mic className="w-4 h-4" />
                   </button>
@@ -1875,7 +1803,7 @@ export default function ChatWindow({
               <div className="space-y-3 pt-2">
                 <div className="relative inline-block">
                   <div className="w-16 h-16 rounded-full border-2 border-indigo-500/40 p-1 mx-auto animate-pulse">
-                    <SecureAvatar src={partnerProfile.photoURL || ''} alt="Avatar" className="w-full h-full object-cover rounded-full" />
+                    <SecureAvatar src={getBotPhotoURL(partnerProfile.uid, partnerProfile.photoURL)} alt="Avatar" className="w-full h-full object-cover rounded-full" />
                   </div>
                   {callSession.type === 'video' && (
                     <span className="absolute bottom-0 right-1 p-1 bg-indigo-500 text-white rounded-full text-[10px]">📹</span>
@@ -1981,7 +1909,7 @@ export default function ChatWindow({
             <div className="flex flex-col items-center -mt-10 px-4 pb-6 border-b border-slate-900/60 relative z-10">
               <div className="relative">
                 <SecureAvatar 
-                  src={partnerProfile.photoURL || ''} 
+                  src={getBotPhotoURL(partnerProfile.uid, partnerProfile.photoURL)} 
                   alt={partnerProfile.displayName} 
                   className="w-20 h-20 rounded-full border-4 border-[#0e121a] object-cover bg-neutral-800 shadow-lg" 
                 />
@@ -2322,19 +2250,17 @@ export default function ChatWindow({
         >
           {/* Lightbox Controls */}
           <div className="absolute top-4 right-4 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-            <a 
-              href={selectedLightboxImage} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              download="konnect_media.jpg"
-              className="p-2.5 bg-neutral-900/80 hover:bg-neutral-800 text-white rounded-full border border-neutral-800 transition shadow-lg flex items-center justify-center"
-              title="Open full size / Download"
+            <button 
+              onClick={() => downloadImage(selectedLightboxImage)}
+              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full border border-indigo-500/20 transition shadow-lg text-[10px] font-bold font-mono uppercase tracking-wider"
+              title="Download Secure Image File"
             >
-              <Maximize2 className="w-4 h-4" />
-            </a>
+              <Download className="w-3.5 h-3.5" />
+              <span>Download</span>
+            </button>
             <button 
               onClick={() => setSelectedLightboxImage(null)}
-              className="p-2.5 bg-neutral-900/80 hover:bg-neutral-800 text-white rounded-full border border-neutral-800 transition shadow-lg flex items-center justify-center"
+              className="p-2 bg-neutral-900/80 hover:bg-neutral-800 text-white rounded-full border border-neutral-800 transition shadow-lg flex items-center justify-center"
               title="Close image zoom"
             >
               <X className="w-4 h-4" />
@@ -2345,7 +2271,7 @@ export default function ChatWindow({
             className="relative max-w-full max-h-[85vh] rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-950 shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            <img 
+            <SecureImage 
               src={selectedLightboxImage} 
               alt="Zoomed Media" 
               referrerPolicy="no-referrer"
@@ -2358,6 +2284,6 @@ export default function ChatWindow({
           </span>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

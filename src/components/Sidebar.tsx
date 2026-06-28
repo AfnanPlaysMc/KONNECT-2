@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, Plus, Settings as SettingsIcon, Film, Gamepad2, QrCode, 
+  Search, Plus, Settings as SettingsIcon, Film, Trophy, QrCode, 
   LogOut, UserPlus, Check, X, Bell, Moon, Sun, ShieldAlert, BadgeHelp, CheckCheck, Menu
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
@@ -13,21 +13,82 @@ import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { UserProfile, THEMES } from '../types';
 
+// @ts-ignore
+import orionAiLogo from '../assets/images/orion_ai_logo_1782673841547.jpg';
+// @ts-ignore
+import oxaLlcLogo from '../assets/images/oxa_llc_logo_1782673859506.jpg';
+
+const getBotPhotoURL = (uid: string, url: string | undefined): string => {
+  if (uid === 'orion-ai') return orionAiLogo;
+  if (uid === 'oxa-llc') return oxaLlcLogo;
+  return url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';
+};
+
 interface SidebarProps {
   profile: UserProfile;
   activeChatId: string | null;
   onSelectChat: (chatId: string, partnerProfile: UserProfile) => void;
   onOpenSettings: () => void;
   onOpenStories: () => void;
-  onOpenGames: () => void;
+  onOpenSports: () => void;
   onOpenMobileMenu?: () => void;
+  onOpenChatWithFriend?: (friendUid: string) => void;
 }
 
+const getAnimatedEmojiUrl = (emoji: string) => {
+  const codePoints = Array.from(emoji)
+    .map(char => char.codePointAt(0)?.toString(16))
+    .filter(hex => hex && hex !== 'fe0f');
+  const hexStr = codePoints.join('_');
+  return `https://fonts.gstatic.com/s/e/notoemoji/latest/${hexStr}/512.webp`;
+};
+
+const renderMessageTextWithEmojis = (text: string) => {
+  if (!text) return '';
+  const EMOJI_REGEX = /(\p{Emoji_Presentation})/gu;
+  const parts = text.split(EMOJI_REGEX);
+  if (parts.length === 1) {
+    return text;
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-0.5 align-middle">
+      {parts.map((part, i) => {
+        if (part && part.match(/\p{Emoji_Presentation}/u)) {
+          return (
+            <img 
+              key={i}
+              src={getAnimatedEmojiUrl(part)} 
+              alt={part} 
+              className="w-4 h-4 object-contain inline-block align-middle"
+              onError={(evt) => {
+                (evt.target as HTMLElement).style.display = 'none';
+                const parent = (evt.target as HTMLElement).parentElement;
+                if (parent && !parent.querySelector(`.fallback-sidebar-emoji-${i}`)) {
+                  const span = document.createElement('span');
+                  span.className = `text-[11px] fallback-sidebar-emoji-${i} align-middle`;
+                  span.innerText = part;
+                  parent.insertBefore(span, evt.target as HTMLElement);
+                }
+              }}
+              referrerPolicy="no-referrer"
+            />
+          );
+        }
+        return <span key={i} className="align-middle">{part}</span>;
+      })}
+    </span>
+  );
+};
+
 export default function Sidebar({ 
-  profile, activeChatId, onSelectChat, onOpenSettings, onOpenStories, onOpenGames, onOpenMobileMenu 
+  profile, activeChatId, onSelectChat, onOpenSettings, onOpenStories, onOpenSports, onOpenMobileMenu, onOpenChatWithFriend 
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [chats, setChats] = useState<{ id: string; partner: UserProfile; lastMessage?: any; unread?: number }[]>([]);
+  const [realtimeProfiles, setRealtimeProfiles] = useState<Record<string, UserProfile>>({});
+  const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+  );
   
   // Add Friend Modal
   const [showAddFriend, setShowAddFriend] = useState(false);
@@ -42,6 +103,28 @@ export default function Sidebar({
   const [showQR, setShowQR] = useState(false);
   const [qrCodeInput, setQrCodeInput] = useState('');
   const [qrMessage, setQrMessage] = useState('');
+
+  // Sync profiles collection in real-time
+  useEffect(() => {
+    const q = query(collection(db, 'profiles'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const profilesMap: Record<string, UserProfile> = {};
+      snapshot.forEach((docSnap) => {
+        profilesMap[docSnap.id] = docSnap.data() as UserProfile;
+      });
+      setRealtimeProfiles(profilesMap);
+    }, (error) => {
+      console.warn("Profiles real-time subscription handled error:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const requestNotificationPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      const res = await Notification.requestPermission();
+      setPermissionStatus(res);
+    }
+  };
 
   // Read incoming friend requests
   useEffect(() => {
@@ -165,7 +248,7 @@ export default function Sidebar({
               uid: 'orion-ai',
               displayName: 'Orion AI',
               username: 'orion_ai',
-              photoURL: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
+              photoURL: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=150',
               bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
               status: 'online',
               theme: 'deep-dark'
@@ -188,7 +271,7 @@ export default function Sidebar({
             uid: 'orion-ai',
             displayName: 'Orion AI',
             username: 'orion_ai',
-            photoURL: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150',
+            photoURL: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=150',
             bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
             status: 'online',
             theme: 'deep-dark'
@@ -202,9 +285,34 @@ export default function Sidebar({
         };
       }
 
-      const filteredChats = chatsList.filter((c) => c.partner.uid !== 'orion-ai');
+      const getTimestampValue = (chat: any) => {
+        const ts = chat.lastMessage?.timestamp;
+        if (!ts) return 0;
+        if (typeof ts.toDate === 'function') {
+          return ts.toDate().getTime();
+        }
+        if (ts instanceof Date) {
+          return ts.getTime();
+        }
+        if (typeof ts === 'string') {
+          return new Date(ts).getTime();
+        }
+        if (typeof ts === 'number') {
+          return ts;
+        }
+        if (ts && ts.seconds) {
+          return ts.seconds * 1000 + (ts.nanoseconds || 0) / 1000000;
+        }
+        return 0;
+      };
 
-      setChats([localOrionChat, ...filteredChats]);
+      const filteredChats = chatsList.filter((c) => c.partner.uid !== 'orion-ai');
+      const allChats = [localOrionChat, ...filteredChats];
+      
+      // Sort chats so that the most recently used (latest message timestamp) is on top
+      allChats.sort((a, b) => getTimestampValue(b) - getTimestampValue(a));
+
+      setChats(allChats);
     }, (error) => {
       console.warn("Chats onSnapshot handled error:", error);
     });
@@ -327,8 +435,23 @@ export default function Sidebar({
     }
   };
 
+  // Map chats with real-time profile data
+  const mappedChats = chats.map(c => {
+    const partnerProfile = realtimeProfiles[c.partner.uid] || c.partner;
+    const isBot = partnerProfile.uid === 'orion-ai' || partnerProfile.uid === 'oxa-llc';
+    const isOnline = isBot || (partnerProfile.status === 'online' && !partnerProfile.stealthMode);
+    
+    return {
+      ...c,
+      partner: {
+        ...partnerProfile,
+        status: (isOnline ? 'online' : 'offline') as 'online' | 'offline'
+      }
+    };
+  });
+
   // Filter chats by search query
-  const filteredChats = chats.filter(c => 
+  const filteredChats = mappedChats.filter(c => 
     c.partner.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.partner.username.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -476,6 +599,58 @@ export default function Sidebar({
           </div>
         )}
 
+        {/* ONLINE USER INDICATOR */}
+        {(() => {
+          const onlineUsers = Object.values(realtimeProfiles).filter(u => 
+            u.uid !== profile.uid &&
+            u.uid !== 'orion-ai' && 
+            u.uid !== 'oxa-llc' &&
+            u.status === 'online' &&
+            !u.stealthMode
+          );
+          if (onlineUsers.length === 0) return null;
+          return (
+            <div className={`px-4 py-3.5 border-b ${isLight ? 'border-slate-100' : 'border-white/5'} mb-2`}>
+              <h4 className={`text-[9px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-400' : 'text-slate-500'} mb-2.5 font-mono flex items-center gap-1.5`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+                Online Users ({onlineUsers.length})
+              </h4>
+              <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
+                {onlineUsers.map((user) => {
+                  const existingChat = chats.find(c => c.partner.uid === user.uid);
+                  return (
+                    <div 
+                      key={user.uid} 
+                      onClick={() => {
+                        if (existingChat) {
+                          onSelectChat(existingChat.id, existingChat.partner);
+                        } else if (onOpenChatWithFriend) {
+                          onOpenChatWithFriend(user.uid);
+                        }
+                      }}
+                      className="flex flex-col items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95 flex-shrink-0"
+                      title={`Chat with ${user.displayName}`}
+                    >
+                      <div className="relative">
+                        <img 
+                          src={getBotPhotoURL(user.uid, user.photoURL)} 
+                          alt={user.displayName} 
+                          className={`w-9.5 h-9.5 rounded-full object-cover border-2 ${isLight ? 'border-slate-200' : 'border-slate-800'}`} 
+                          referrerPolicy="no-referrer"
+                        />
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0c1017]" />
+                      </div>
+                      <span className={`text-[8.5px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-300'} font-sans max-w-[50px] truncate`}>
+                        {user.displayName.split(' ')[0]}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         <h4 className={themeClasses.conversationsTitle}>Conversations</h4>
         
         {filteredChats.length === 0 ? (
@@ -500,7 +675,7 @@ export default function Sidebar({
               >
                 <div className="flex items-center gap-3">
                   <div className="relative flex-shrink-0">
-                    <img src={chat.partner.photoURL} alt={chat.partner.displayName} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
+                    <img src={getBotPhotoURL(chat.partner.uid, chat.partner.photoURL)} alt={chat.partner.displayName} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
                     <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
                   </div>
                   <div>
@@ -510,7 +685,7 @@ export default function Sidebar({
                         <VerifiedBadge className="w-3.5 h-3.5" />
                       )}
                     </h5>
-                    <p className={themeClasses.chatLastMsg}>{lastMsgText}</p>
+                    <p className={themeClasses.chatLastMsg}>{renderMessageTextWithEmojis(lastMsgText)}</p>
                   </div>
                 </div>
 
