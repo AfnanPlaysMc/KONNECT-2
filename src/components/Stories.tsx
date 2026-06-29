@@ -308,7 +308,7 @@ export default function Stories({ profile, friendIds, onClose }: StoriesProps) {
               <p className="text-xs text-slate-400">Your space is silent. Click '+' to make waves.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {stories.map((story, i) => (
                 <div 
                   key={story.id} 

@@ -28,6 +28,17 @@ declare global {
   }
 }
 
+export const GROUP_PICTURE_PRESETS = [
+  { name: 'Squad', url: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=150&h=150&fit=crop' },
+  { name: 'Gamers', url: 'https://images.unsplash.com/photo-1612287230202-1bf1d85d1bdf?w=150&h=150&fit=crop' },
+  { name: 'Office', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=150&h=150&fit=crop' },
+  { name: 'Nature', url: 'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=150&h=150&fit=crop' },
+  { name: 'Devs', url: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=150&h=150&fit=crop' },
+  { name: 'Beats', url: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=150&h=150&fit=crop' },
+  { name: 'Athletes', url: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=150&h=150&fit=crop' },
+  { name: 'Scholars', url: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=150&h=150&fit=crop' },
+];
+
 const getBotPhotoURL = (uid: string, url: string | undefined): string => {
   if (uid === 'orion-ai') return orionAiLogo;
   if (uid === 'oxa-llc') return oxaLlcLogo;
@@ -89,47 +100,101 @@ const SecureImage = ({ src, className, ...props }: { src: string; className?: st
   );
 };
 
-// General-purpose 3D animated Noto Emoji parser
+// Helper to parse and render standard text with 3D animated Noto Emojis
+const renderEmojisOnly = (text: string) => {
+  if (!text) return '';
+  const EMOJI_REGEX = /(\p{Emoji_Presentation})/gu;
+  const parts = text.split(EMOJI_REGEX);
+  if (parts.length === 1) {
+    return text;
+  }
+  return parts.map((part, i) => {
+    if (part && part.match(/\p{Emoji_Presentation}/u)) {
+      return (
+        <span key={i} className="relative inline-flex items-center align-middle" style={{ contentVisibility: 'auto' }}>
+          <span className="absolute opacity-0 pointer-events-none select-text" style={{ fontSize: '0.1px', width: '1px', height: '1px', overflow: 'hidden' }}>{part}</span>
+          <img 
+            src={getAnimatedEmojiUrl(part)} 
+            alt={part} 
+            draggable="false"
+            className="w-5.5 h-5.5 object-contain inline-block align-middle transform hover:scale-115 transition-all duration-150 select-none"
+            onError={(evt) => {
+              (evt.target as HTMLElement).style.display = 'none';
+              const parent = (evt.target as HTMLElement).parentElement;
+              if (parent && !parent.querySelector(`.fallback-emoji-${i}`)) {
+                const span = document.createElement('span');
+                span.className = `text-xs fallback-emoji-${i} align-middle`;
+                span.innerText = part;
+                parent.insertBefore(span, evt.target as HTMLElement);
+              }
+            }}
+            referrerPolicy="no-referrer"
+          />
+        </span>
+      );
+    }
+    return part;
+  });
+};
+
+// General-purpose parser supporting blue text links and animated Noto Emojis
 const renderMessageContent = (text: string) => {
   if (!text) return null;
 
-  // Emoji regex to match standard emoji characters
-  const EMOJI_REGEX = /(\p{Emoji_Presentation})/gu;
-  const parts = text.split(EMOJI_REGEX);
-  
+  const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const parts = text.split(URL_REGEX);
+
   if (parts.length === 1) {
-    return <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap">{text}</p>;
+    // No links found, just render emojis normally
+    return (
+      <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap">
+        {renderEmojisOnly(text)}
+      </p>
+    );
   }
 
   return (
-    <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap inline-flex flex-wrap items-center gap-1.5 py-0.5">
+    <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap">
       {parts.map((part, i) => {
-        if (part && part.match(/\p{Emoji_Presentation}/u)) {
+        if (part.match(URL_REGEX)) {
+          const href = part.toLowerCase().startsWith('http') ? part : `https://${part}`;
           return (
-            <img 
-              key={i}
-              src={getAnimatedEmojiUrl(part)} 
-              alt={part} 
-              className="w-5.5 h-5.5 object-contain inline-block align-middle transform hover:scale-115 transition-all duration-150"
-              onError={(evt) => {
-                // Fall back to text if WebP fails to load
-                (evt.target as HTMLElement).style.display = 'none';
-                const parent = (evt.target as HTMLElement).parentElement;
-                if (parent && !parent.querySelector(`.fallback-emoji-${i}`)) {
-                  const span = document.createElement('span');
-                  span.className = `text-xs fallback-emoji-${i} align-middle`;
-                  span.innerText = part;
-                  parent.insertBefore(span, evt.target as HTMLElement);
-                }
-              }}
-              referrerPolicy="no-referrer"
-            />
+            <a 
+              key={i} 
+              href={href} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-blue-400 hover:text-blue-300 underline font-semibold break-all inline-block"
+            >
+              {part}
+            </a>
           );
+        } else {
+          return <React.Fragment key={i}>{renderEmojisOnly(part)}</React.Fragment>;
         }
-        return <span key={i} className="align-middle">{part}</span>;
       })}
     </p>
   );
+};
+
+const isSameDay = (d1: Date, d2: Date) => {
+  return d1.getFullYear() === d2.getFullYear() &&
+         d1.getMonth() === d2.getMonth() &&
+         d1.getDate() === d2.getDate();
+};
+
+const getDaySeparator = (date: Date) => {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (isSameDay(date, today)) {
+    return 'Today';
+  } else if (isSameDay(date, yesterday)) {
+    return 'Yesterday';
+  } else {
+    return date.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
+  }
 };
 
 interface ChatWindowProps {
@@ -341,7 +406,19 @@ export default function ChatWindow({
                 requireDisplayName: false,
                 enableClosePage: false,
                 hideWatermark: true,
-                disableModeratorIndicator: true,
+                disableModeratorIndicator: false,
+                lobby: {
+                  enabled: false
+                },
+                hosts: {
+                  domain: 'meet.jit.si',
+                  muc: 'muc.meet.jit.si'
+                },
+                maxMeetingDuration: 3600, // Guarantee up to 1 hour (3600 seconds) duration
+                p2p: {
+                  enabled: true,
+                  preferH264: true
+                },
                 chromeExtensionBanner: {
                   preventShow: true
                 },
@@ -387,25 +464,7 @@ export default function ChatWindow({
     }
   }, [callSession?.status, callSession?.roomId, callSession?.type]);
 
-  // Auto-restart connected call at 4:58 (298 seconds) to bypass 5-minute public room limitation dynamically and seamlessly.
-  useEffect(() => {
-    if (callSession?.status === 'connected' && callSession?.roomId && callTimer >= 298) {
-      if (callSession.callerId === myProfile.uid) {
-        // Regenerate room ID and update Firestore chat doc
-        const newRoomId = `konnect_jitsi_${chatId}_${Date.now().toString(36)}`;
-        console.log(`[Call Manager] Reaching 4:58 limit. Auto-re-routing caller to fresh room: ${newRoomId}`);
-        updateDoc(doc(db, 'chats', chatId), {
-          'activeCall.roomId': newRoomId
-        }).catch(err => {
-          console.error("Failed to auto-restart Jitsi call:", err);
-        });
-      } else {
-        console.log(`[Call Manager] Reaching 4:58 limit. Receiver auto-re-routing alongside caller.`);
-      }
-      // Reset call timer to 0 so we count the next 5 minutes afresh
-      setCallTimer(0);
-    }
-  }, [callTimer, callSession?.status, callSession?.roomId, callSession?.callerId, chatId, myProfile.uid]);
+
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1427,9 +1486,23 @@ export default function ChatWindow({
               if (!searchText) return true;
               return m.text.toLowerCase().includes(searchText.toLowerCase());
             })
-            .map((msg) => {
+            .map((msg, index, arr) => {
               const isMe = msg.senderId === myProfile.uid;
-              const msgTime = msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              
+              let msgDate = new Date();
+              if (msg.timestamp) {
+                msgDate = msg.timestamp.toDate ? msg.timestamp.toDate() : new Date(msg.timestamp);
+              }
+              
+              const prevMsg = index > 0 ? arr[index - 1] : null;
+              let prevMsgDate = null;
+              if (prevMsg && prevMsg.timestamp) {
+                prevMsgDate = prevMsg.timestamp.toDate ? prevMsg.timestamp.toDate() : new Date(prevMsg.timestamp);
+              }
+              
+              const showSeparator = !prevMsgDate || !isSameDay(msgDate, prevMsgDate);
+              const currentDayGroup = getDaySeparator(msgDate);
+              const msgTime = msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               
               // Only display read tick double checks if recipient read receipt config allows
               const showBlueTicks = msg.read && (partnerProfile.readReceipts !== false);
@@ -1443,147 +1516,163 @@ export default function ChatWindow({
                     : 'bg-[#0f131c] border border-slate-900 text-slate-100 rounded-tl-none');
 
               return (
-                <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative`}>
-                  <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 relative ${bubbleClass}`}>
-                    
-                    {/* Render Sender Name above text bubbles in Group chats */}
-                    {!isMe && partnerProfile.isGroup && (
-                      <span className="text-[9px] text-indigo-400 font-mono mb-1 block">{msg.senderName || 'Anonymous'}</span>
-                    )}
+                <React.Fragment key={msg.id}>
+                  {showSeparator && (
+                    <div className="flex items-center justify-center my-6 select-none w-full col-span-full">
+                      <div className={`h-[1px] flex-1 max-w-[120px] ${isLight ? 'bg-slate-200' : 'bg-white/5'}`} />
+                      <span className={`mx-4 text-[10px] font-mono font-bold tracking-widest uppercase px-3.5 py-1 rounded-full ${
+                        isLight 
+                          ? 'bg-slate-100 text-slate-500 border border-slate-200/60 shadow-sm' 
+                          : 'bg-[#0c1017] text-slate-400 border border-slate-800/80 shadow'
+                      }`}>
+                        {currentDayGroup}
+                      </span>
+                      <div className={`h-[1px] flex-1 max-w-[120px] ${isLight ? 'bg-slate-200' : 'bg-white/5'}`} />
+                    </div>
+                  )}
 
-                    {/* Standard text message */}
-                    {msg.type === 'text' && renderMessageContent(msg.text)}
+                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative w-full`}>
+                    <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 relative ${bubbleClass}`}>
+                      
+                      {/* Render Sender Name above text bubbles in Group chats */}
+                      {!isMe && partnerProfile.isGroup && (
+                        <span className="text-[9px] text-indigo-400 font-mono mb-1 block">{msg.senderName || 'Anonymous'}</span>
+                      )}
 
-                    {/* Sticker image fallback */}
-                    {msg.type === 'sticker' && (
-                      <div className="py-1">
-                        {renderMessageContent(msg.text || '✨ [Animated Sticker]')}
-                      </div>
-                    )}
+                      {/* Standard text message */}
+                      {msg.type === 'text' && renderMessageContent(msg.text)}
 
-                    {/* Shared secure photo */}
-                    {msg.type === 'image' && (
-                      <div 
-                        onClick={() => setSelectedLightboxImage(msg.mediaUrl)}
-                        className="py-1 select-none pointer-events-auto rounded-lg overflow-hidden border border-slate-900 cursor-pointer hover:opacity-90 transition-all duration-200"
-                      >
-                        <SecureImage 
-                          src={msg.mediaUrl} 
-                          alt="shared secure snapshot" 
-                          draggable="false"
-                          referrerPolicy="no-referrer"
-                          className="max-w-xs max-h-48 object-cover rounded-lg no-screenshot-css" 
-                        />
-                        <div className="bg-slate-950/60 p-1.5 text-center text-[8px] text-slate-400 font-mono border-t border-slate-900 flex items-center justify-center gap-1">
-                          🛡️ Screenshot Blocked Snapshot • Zoom
+                      {/* Sticker image fallback */}
+                      {msg.type === 'sticker' && (
+                        <div className="py-1">
+                          {renderMessageContent(msg.text || '✨ [Animated Sticker]')}
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* Voice audio note */}
-                    {msg.type === 'voice' && (
-                      <div className="py-1 min-w-[180px]">
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => playVoiceNote(msg.mediaUrl || '', msg.duration || 5)}
-                            className="p-1.5 bg-indigo-500 hover:bg-indigo-400 rounded-full text-white transition"
-                          >
-                            {activeVoiceNote === msg.mediaUrl && isPlayingVoice ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 pl-0.5" />}
-                          </button>
-                          
-                          <div className="flex-1">
-                            {/* Fake visual wave animation if active */}
-                            <div className="flex gap-0.5 items-center justify-center h-4">
-                              <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-3 animate-pulse' : 'h-1'}`} />
-                              <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-4 animate-pulse' : 'h-1'}`} style={{ animationDelay: '100ms' }} />
-                              <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-2 animate-pulse' : 'h-1'}`} style={{ animationDelay: '200ms' }} />
-                              <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-3 animate-pulse' : 'h-1'}`} style={{ animationDelay: '300ms' }} />
-                            </div>
+                      {/* Shared secure photo */}
+                      {msg.type === 'image' && (
+                        <div 
+                          onClick={() => setSelectedLightboxImage(msg.mediaUrl)}
+                          className="py-1 select-none pointer-events-auto rounded-lg overflow-hidden border border-slate-900 cursor-pointer hover:opacity-90 transition-all duration-200"
+                        >
+                          <SecureImage 
+                            src={msg.mediaUrl} 
+                            alt="shared secure snapshot" 
+                            draggable="false"
+                            referrerPolicy="no-referrer"
+                            className="max-w-xs max-h-48 object-cover rounded-lg no-screenshot-css" 
+                          />
+                          <div className="bg-slate-950/60 p-1.5 text-center text-[8px] text-slate-400 font-mono border-t border-slate-900 flex items-center justify-center gap-1">
+                            🛡️ Screenshot Blocked Snapshot • Zoom
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Voice audio note */}
+                      {msg.type === 'voice' && (
+                        <div className="py-1 min-w-[180px]">
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => playVoiceNote(msg.mediaUrl || '', msg.duration || 5)}
+                              className="p-1.5 bg-indigo-500 hover:bg-indigo-400 rounded-full text-white transition"
+                            >
+                              {activeVoiceNote === msg.mediaUrl && isPlayingVoice ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 pl-0.5" />}
+                            </button>
                             
-                            <div className="flex justify-between items-center mt-1 text-[8px] font-mono text-slate-400">
-                              <span>Voice • {msg.duration || 0}s</span>
-                              {activeVoiceNote === msg.mediaUrl && (
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); setPlaybackSpeed(playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1); }}
-                                  className="bg-black/30 px-1 rounded-md text-[7px]"
-                                >
-                                  {playbackSpeed}x
-                                </button>
-                              )}
+                            <div className="flex-1">
+                              {/* Fake visual wave animation if active */}
+                              <div className="flex gap-0.5 items-center justify-center h-4">
+                                <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-3 animate-pulse' : 'h-1'}`} />
+                                <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-4 animate-pulse' : 'h-1'}`} style={{ animationDelay: '100ms' }} />
+                                <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-2 animate-pulse' : 'h-1'}`} style={{ animationDelay: '200ms' }} />
+                                <span className={`w-0.5 bg-indigo-400 rounded transition-all ${isPlayingVoice && activeVoiceNote === msg.mediaUrl ? 'h-3 animate-pulse' : 'h-1'}`} style={{ animationDelay: '300ms' }} />
+                              </div>
+                              
+                              <div className="flex justify-between items-center mt-1 text-[8px] font-mono text-slate-400">
+                                <span>Voice • {msg.duration || 0}s</span>
+                                {activeVoiceNote === msg.mediaUrl && (
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); setPlaybackSpeed(playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1); }}
+                                    className="bg-black/30 px-1 rounded-md text-[7px]"
+                                  >
+                                    {playbackSpeed}x
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {/* Call Log item */}
-                    {msg.type === 'call_log' && (
-                      <div className="flex items-center gap-2 text-[10px] font-mono opacity-80 py-0.5">
-                        <span>{msg.text}</span>
-                      </div>
-                    )}
-
-                    {/* Game challenge item */}
-                    {msg.type === 'game_challenge' && (
-                      <div className="flex flex-col gap-2 py-1 min-w-[160px]">
-                        <div className="flex items-center gap-2">
-                          <Gamepad2 className="w-4 h-4 text-fuchsia-400 animate-bounce" />
-                          <span className="font-bold text-xs">Konnect Game Arena</span>
+                      {/* Call Log item */}
+                      {msg.type === 'call_log' && (
+                        <div className="flex items-center gap-2 text-[10px] font-mono opacity-80 py-0.5">
+                          <span>{msg.text}</span>
                         </div>
-                        <p className="text-[10px] text-slate-300 font-mono">Challenged to: {msg.gameInfo?.gameName}</p>
-                        
-                        {msg.gameInfo?.status === 'pending' ? (
-                          !isMe ? (
-                            <button
-                              onClick={() => acceptGameChallenge(msg.id, msg.gameInfo?.gameId || 'tictactoe')}
-                              className="w-full mt-1 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-500 text-[10px] font-bold text-white rounded-lg transition"
-                            >
-                              Accept & Play Match
-                            </button>
+                      )}
+
+                      {/* Game challenge item */}
+                      {msg.type === 'game_challenge' && (
+                        <div className="flex flex-col gap-2 py-1 min-w-[160px]">
+                          <div className="flex items-center gap-2">
+                            <Gamepad2 className="w-4 h-4 text-fuchsia-400 animate-bounce" />
+                            <span className="font-bold text-xs">Konnect Game Arena</span>
+                          </div>
+                          <p className="text-[10px] text-slate-300 font-mono">Challenged to: {msg.gameInfo?.gameName}</p>
+                          
+                          {msg.gameInfo?.status === 'pending' ? (
+                            !isMe ? (
+                              <button
+                                onClick={() => acceptGameChallenge(msg.id, msg.gameInfo?.gameId || 'tictactoe')}
+                                className="w-full mt-1 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-500 text-[10px] font-bold text-white rounded-lg transition"
+                              >
+                                Accept & Play Match
+                              </button>
+                            ) : (
+                              <span className="text-[9px] text-slate-500 italic font-mono">Awaiting friend choice...</span>
+                            )
                           ) : (
-                            <span className="text-[9px] text-slate-500 italic font-mono">Awaiting friend choice...</span>
+                            <span className="text-[9px] text-emerald-400 font-mono flex items-center gap-1"><Check className="w-3 h-3" /> Challenge active / Played</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Timestamp & Double check ticks */}
+                      <div className={`flex items-center justify-end gap-1 text-[8px] font-mono mt-1.5 ${isMe ? 'text-indigo-200/70' : 'text-slate-500/80'}`}>
+                        <span>{msgTime}</span>
+                        {isMe && (
+                          showBlueTicks ? (
+                            <CheckCheck className="w-3.5 h-3.5 text-cyan-400 inline-block" />
+                          ) : (
+                            <CheckCheck className="w-3.5 h-3.5 text-slate-400 inline-block" />
                           )
-                        ) : (
-                          <span className="text-[9px] text-emerald-400 font-mono flex items-center gap-1"><Check className="w-3 h-3" /> Challenge active / Played</span>
                         )}
                       </div>
-                    )}
 
-                    {/* Timestamp & Double check ticks */}
-                    <div className={`flex items-center justify-end gap-1 text-[8px] font-mono mt-1.5 ${isMe ? 'text-indigo-200' : 'text-slate-500'}`}>
-                      <span>{msgTime}</span>
-                      {isMe && (
-                        showBlueTicks ? (
-                          <CheckCheck className="w-3.5 h-3.5 text-cyan-400" />
-                        ) : (
-                          <CheckCheck className="w-3.5 h-3.5 text-slate-400" />
-                        )
+                      {/* Display reactions directly on message card */}
+                      {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                        <div className="absolute -bottom-2 right-2 flex gap-0.5 bg-slate-950 border border-slate-800 rounded-full px-1 py-0.5 shadow">
+                          {Object.entries(msg.reactions).map(([uid, rEmoji], idx) => (
+                            <span key={idx} className="text-[9px]">{rEmoji}</span>
+                          ))}
+                        </div>
                       )}
                     </div>
 
-                    {/* Display reactions directly on message card */}
-                    {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                      <div className="absolute -bottom-2 right-2 flex gap-0.5 bg-slate-950 border border-slate-800 rounded-full px-1 py-0.5 shadow">
-                        {Object.entries(msg.reactions).map(([uid, rEmoji], idx) => (
-                          <span key={idx} className="text-[9px]">{rEmoji}</span>
-                        ))}
-                      </div>
-                    )}
+                    {/* REACTION BAR HOVER BAR */}
+                    <div className="opacity-0 group-hover:opacity-100 absolute -top-7 right-0 flex gap-1 bg-slate-950 border border-slate-800 rounded-full p-1 shadow-md transition z-20">
+                      {quickReactions.map((emoji) => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleAddReaction(msg.id, emoji)}
+                          className="text-xs hover:scale-125 transition-all active:scale-95 px-0.5"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-
-                  {/* REACTION BAR HOVER BAR */}
-                  <div className="opacity-0 group-hover:opacity-100 absolute -top-7 right-0 flex gap-1 bg-slate-950 border border-slate-800 rounded-full p-1 shadow-md transition z-20">
-                    {quickReactions.map((emoji) => (
-                      <button
-                        key={emoji}
-                        onClick={() => handleAddReaction(msg.id, emoji)}
-                        className="text-xs hover:scale-125 transition-all active:scale-95 px-0.5"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                </React.Fragment>
               );
             })}
 
@@ -1928,21 +2017,47 @@ export default function ChatWindow({
                   </p>
                 </>
               ) : (
-                <div className="w-full mt-3 space-y-2">
-                  <input 
-                    type="text"
-                    value={groupNameInput}
-                    onChange={(e) => setGroupNameInput(e.target.value)}
-                    placeholder="Enter Group Name..."
-                    className="w-full px-2 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-white"
-                  />
-                  <input 
-                    type="text"
-                    value={groupPhotoInput}
-                    onChange={(e) => setGroupPhotoInput(e.target.value)}
-                    placeholder="Group Avatar URL..."
-                    className="w-full px-2 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-white"
-                  />
+                <div className="w-full mt-3 space-y-3 text-left">
+                  <div>
+                    <label className="block text-[9px] uppercase font-bold tracking-wider text-slate-500 mb-1 font-mono">Group Name</label>
+                    <input 
+                      type="text"
+                      value={groupNameInput}
+                      onChange={(e) => setGroupNameInput(e.target.value)}
+                      placeholder="Enter Group Name..."
+                      className="w-full px-2 py-1 bg-slate-950 border border-slate-800 rounded text-xs text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] uppercase font-bold tracking-wider text-slate-500 mb-1.5 font-mono">Select Group Avatar Picture</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {GROUP_PICTURE_PRESETS.map((p) => {
+                        const isSelected = groupPhotoInput === p.url;
+                        return (
+                          <button
+                            key={p.name}
+                            type="button"
+                            onClick={() => setGroupPhotoInput(p.url)}
+                            className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all duration-200 ${
+                              isSelected 
+                                ? 'border-indigo-500 ring-2 ring-indigo-500/30 scale-95' 
+                                : 'border-slate-800 hover:border-slate-700 hover:scale-105'
+                            }`}
+                          >
+                            <img src={p.url} alt={p.name} className="w-full h-full object-cover select-none" referrerPolicy="no-referrer" />
+                            <div className="absolute inset-x-0 bottom-0 bg-black/60 py-0.5 text-[7px] text-center text-white truncate font-mono">
+                              {p.name}
+                            </div>
+                            {isSelected && (
+                              <div className="absolute top-1 right-1 bg-indigo-500 rounded-full p-0.5 z-10">
+                                <Check className="w-2.5 h-2.5 text-white" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               )}
               

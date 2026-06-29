@@ -55,23 +55,27 @@ const renderMessageTextWithEmojis = (text: string) => {
       {parts.map((part, i) => {
         if (part && part.match(/\p{Emoji_Presentation}/u)) {
           return (
-            <img 
-              key={i}
-              src={getAnimatedEmojiUrl(part)} 
-              alt={part} 
-              className="w-4 h-4 object-contain inline-block align-middle"
-              onError={(evt) => {
-                (evt.target as HTMLElement).style.display = 'none';
-                const parent = (evt.target as HTMLElement).parentElement;
-                if (parent && !parent.querySelector(`.fallback-sidebar-emoji-${i}`)) {
-                  const span = document.createElement('span');
-                  span.className = `text-[11px] fallback-sidebar-emoji-${i} align-middle`;
-                  span.innerText = part;
-                  parent.insertBefore(span, evt.target as HTMLElement);
-                }
-              }}
-              referrerPolicy="no-referrer"
-            />
+            <span key={i} className="relative inline-flex items-center align-middle" style={{ contentVisibility: 'auto' }}>
+              {/* Hidden text representation so standard browser selections capture the actual emoji char */}
+              <span className="absolute opacity-0 pointer-events-none select-text" style={{ fontSize: '0.1px', width: '1px', height: '1px', overflow: 'hidden' }}>{part}</span>
+              <img 
+                src={getAnimatedEmojiUrl(part)} 
+                alt={part} 
+                draggable="false"
+                className="w-4 h-4 object-contain inline-block align-middle select-none"
+                onError={(evt) => {
+                  (evt.target as HTMLElement).style.display = 'none';
+                  const parent = (evt.target as HTMLElement).parentElement;
+                  if (parent && !parent.querySelector(`.fallback-sidebar-emoji-${i}`)) {
+                    const span = document.createElement('span');
+                    span.className = `text-[11px] fallback-sidebar-emoji-${i} align-middle`;
+                    span.innerText = part;
+                    parent.insertBefore(span, evt.target as HTMLElement);
+                  }
+                }}
+                referrerPolicy="no-referrer"
+              />
+            </span>
           );
         }
         return <span key={i} className="align-middle">{part}</span>;
@@ -99,10 +103,12 @@ export default function Sidebar({
   const [searchedUser, setSearchedUser] = useState<UserProfile | null>(null);
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
 
-  // QR Modal
-  const [showQR, setShowQR] = useState(false);
-  const [qrCodeInput, setQrCodeInput] = useState('');
-  const [qrMessage, setQrMessage] = useState('');
+  // Group creation states
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupDesc, setNewGroupDesc] = useState('');
+  const [selectedFriendsForGroup, setSelectedFriendsForGroup] = useState<string[]>([]);
+  const [loadingCreateGroup, setLoadingCreateGroup] = useState(false);
 
   // Sync profiles collection in real-time
   useEffect(() => {
@@ -196,8 +202,41 @@ export default function Sidebar({
       
       for (const chatDoc of snapshot.docs) {
         const chatData = chatDoc.data();
-        const partnerId = chatData.participants.find((p: string) => p !== profile.uid);
         
+        if (chatData.isGroup) {
+          // This is a group chat! No partner lookups required since group fields are self-contained.
+          chatsList.push({
+            id: chatDoc.id,
+            isGroup: true,
+            groupName: chatData.groupName,
+            groupPhotoURL: chatData.groupPhotoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(chatData.groupName)}`,
+            groupDescription: chatData.groupDescription || '',
+            admins: chatData.admins || [],
+            createdBy: chatData.createdBy || '',
+            participants: chatData.participants || [],
+            partner: {
+              uid: chatDoc.id,
+              isGroup: true,
+              displayName: chatData.groupName,
+              username: `group_${chatDoc.id.slice(0, 6)}`,
+              photoURL: chatData.groupPhotoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(chatData.groupName)}`,
+              bio: chatData.groupDescription || 'Group Space',
+              blockedUsers: [],
+              closeFriends: [],
+              customList: [],
+              theme: 'midnight-blue',
+              stealthMode: false,
+              readReceipts: true,
+              notificationSounds: {},
+              status: 'offline'
+            },
+            lastMessage: chatData.lastMessage || null,
+            unread: chatData.unreadCount?.[profile.uid] || 0
+          });
+          continue;
+        }
+
+        const partnerId = chatData.participants.find((p: string) => p !== profile.uid);
         if (!partnerId) continue;
 
         // Fetch partner profile
@@ -409,29 +448,80 @@ export default function Sidebar({
     }
   };
 
-  const handleQRScanSubmit = async (e: React.FormEvent) => {
+  const handleCreateGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setQrMessage('');
-    const input = qrCodeInput.trim();
-    if (!input) return;
+    const gName = newGroupName.trim();
+    if (!gName) return;
 
-    if (input.startsWith('konnect://profile/')) {
-      const uid = input.replace('konnect://profile/', '');
-      try {
-        const docSnap = await getDoc(doc(db, 'profiles', uid));
-        if (docSnap.exists()) {
-          const uProf = docSnap.data() as UserProfile;
-          setFriendUsername(uProf.username);
-          setShowQR(false);
-          setShowAddFriend(true);
-        } else {
-          setQrMessage('QR Code expired or invalid user profile.');
+    setLoadingCreateGroup(true);
+    try {
+      const newChatRef = doc(collection(db, 'chats'));
+      const groupData = {
+        isGroup: true,
+        groupName: gName,
+        groupDescription: newGroupDesc.trim() || 'A standard group chat space',
+        groupPhotoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(gName)}`,
+        createdBy: profile.uid,
+        admins: [profile.uid],
+        participants: [profile.uid, ...selectedFriendsForGroup],
+        noAdminMode: false,
+        createdAt: new Date(),
+        lastMessage: {
+          text: `Group "${gName}" was created. Welcome everyone!`,
+          senderId: profile.uid,
+          timestamp: new Date()
+        },
+        unreadCount: {
+          [profile.uid]: 0
         }
-      } catch (err) {
-        setQrMessage('Error scanning QR.');
-      }
-    } else {
-      setQrMessage('Invalid QR string. Paste a valid Konnect code.');
+      } as any;
+
+      // Also set unread count for other participants
+      selectedFriendsForGroup.forEach(uid => {
+        groupData.unreadCount[uid] = 1;
+      });
+
+      await setDoc(newChatRef, groupData);
+
+      // Add a message record to subcollection
+      const messageRef = doc(collection(db, `chats/${newChatRef.id}/messages`));
+      await setDoc(messageRef, {
+        id: messageRef.id,
+        senderId: profile.uid,
+        receiverId: newChatRef.id,
+        text: `Group "${gName}" was created. Welcome everyone!`,
+        timestamp: new Date(),
+        type: 'text',
+        read: false
+      });
+
+      // Reset form
+      setNewGroupName('');
+      setNewGroupDesc('');
+      setSelectedFriendsForGroup([]);
+      setShowCreateGroup(false);
+
+      // Select the new group chat
+      onSelectChat(newChatRef.id, {
+        uid: newChatRef.id,
+        isGroup: true,
+        displayName: gName,
+        username: `group_${newChatRef.id.slice(0, 6)}`,
+        photoURL: groupData.groupPhotoURL,
+        bio: groupData.groupDescription,
+        blockedUsers: [],
+        closeFriends: [],
+        customList: [],
+        theme: 'midnight-blue',
+        stealthMode: false,
+        readReceipts: true,
+        notificationSounds: {},
+        status: 'offline'
+      });
+    } catch (err) {
+      console.error('Error creating group:', err);
+    } finally {
+      setLoadingCreateGroup(false);
     }
   };
 
@@ -454,6 +544,13 @@ export default function Sidebar({
   const filteredChats = mappedChats.filter(c => 
     c.partner.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.partner.username.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // List of standard friends you can add to a group
+  const availableFriends = (Object.values(realtimeProfiles) as UserProfile[]).filter(p => 
+    p.uid !== profile.uid && 
+    p.uid !== 'orion-ai' && 
+    p.uid !== 'oxa-llc'
   );
 
   const activeThemeObj = THEMES.find(t => t.id === (profile.theme || 'deep-dark')) || THEMES[0];
@@ -509,13 +606,6 @@ export default function Sidebar({
         </div>
 
         <div className="flex gap-1 flex-shrink-0">
-          <button 
-            onClick={() => setShowQR(true)}
-            title="My QR Code"
-            className={themeClasses.iconBtn}
-          >
-            <QrCode className="w-4 h-4" />
-          </button>
           <button 
             onClick={onOpenSettings}
             title="Settings"
@@ -601,13 +691,21 @@ export default function Sidebar({
 
         {/* ONLINE USER INDICATOR */}
         {(() => {
-          const onlineUsers = Object.values(realtimeProfiles).filter(u => 
-            u.uid !== profile.uid &&
-            u.uid !== 'orion-ai' && 
-            u.uid !== 'oxa-llc' &&
-            u.status === 'online' &&
-            !u.stealthMode
-          );
+          const onlineUsers = (Object.values(realtimeProfiles) as UserProfile[]).filter(u => {
+            if (u.uid === profile.uid || u.uid === 'orion-ai' || u.uid === 'oxa-llc') return false;
+            if (u.status !== 'online' || u.stealthMode) return false;
+            
+            // Real-time heartbeat: must have been active within last 3 minutes (180,000ms)
+            if (u.lastSeen) {
+              try {
+                const lastSeenDate = u.lastSeen.toDate ? u.lastSeen.toDate() : new Date(u.lastSeen);
+                return (Date.now() - lastSeenDate.getTime()) < 180000;
+              } catch (e) {
+                return false;
+              }
+            }
+            return false;
+          });
           if (onlineUsers.length === 0) return null;
           return (
             <div className={`px-4 py-3.5 border-b ${isLight ? 'border-slate-100' : 'border-white/5'} mb-2`}>
@@ -651,56 +749,130 @@ export default function Sidebar({
           );
         })()}
 
-        <h4 className={themeClasses.conversationsTitle}>Conversations</h4>
-        
-        {filteredChats.length === 0 ? (
-          <div className="text-center py-10 text-slate-400 px-4">
-            <span className="block text-2xl mb-1">💬</span>
-            <p className="text-[10px]">No chats found. Add friends using their handle username or scan their QR code to begin.</p>
-          </div>
-        ) : (
-          filteredChats.map((chat) => {
+        {(() => {
+          const officialsChats = filteredChats.filter(c => c.partner.uid === 'orion-ai' || c.partner.uid === 'oxa-llc');
+          const groupsChats = filteredChats.filter(c => c.isGroup === true);
+          const normalChats = filteredChats.filter(c => !c.isGroup && c.partner.uid !== 'orion-ai' && c.partner.uid !== 'oxa-llc');
+
+          const renderChatItem = (chat: any) => {
             const isActive = activeChatId === chat.id;
             const lastMsgText = chat.lastMessage?.text || 'No messages';
-            const lastMsgTime = chat.lastMessage?.timestamp
-              ? new Date(chat.lastMessage.timestamp.toDate ? chat.lastMessage.timestamp.toDate() : chat.lastMessage.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              : '';
-            const isOnline = chat.partner.status === 'online' && !chat.partner.stealthMode;
+            let lastMsgTime = '';
+            if (chat.lastMessage?.timestamp) {
+              try {
+                const ts = chat.lastMessage.timestamp;
+                const date = ts.toDate ? ts.toDate() : new Date(ts);
+                lastMsgTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              } catch (e) {
+                console.warn(e);
+              }
+            }
+            const isBot = chat.partner.uid === 'orion-ai' || chat.partner.uid === 'oxa-llc';
+            const isOnline = !chat.isGroup && (isBot || (chat.partner.status === 'online' && !chat.partner.stealthMode));
 
             return (
               <div
                 key={chat.id}
                 onClick={() => onSelectChat(chat.id, chat.partner)}
-                className={`flex items-center justify-between p-3.5 cursor-pointer transition relative ${themeClasses.chatItem(isActive)}`}
+                className={`flex items-center justify-between px-3 py-2.5 cursor-pointer transition relative rounded-xl mx-2 my-0.5 ${
+                  isActive 
+                    ? (isLight ? 'bg-indigo-50 text-indigo-950 font-semibold' : 'bg-white/5 text-white font-semibold') 
+                    : (isLight ? 'hover:bg-slate-100 text-slate-700' : 'hover:bg-white/[0.02] text-slate-300')
+                }`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className="relative flex-shrink-0">
-                    <img src={getBotPhotoURL(chat.partner.uid, chat.partner.photoURL)} alt={chat.partner.displayName} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
-                    <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                    <img 
+                      src={getBotPhotoURL(chat.partner.uid, chat.partner.photoURL)} 
+                      alt={chat.partner.displayName} 
+                      className={`w-9 h-9 rounded-full object-cover border ${isLight ? 'border-slate-200' : 'border-slate-800'}`} 
+                      referrerPolicy="no-referrer"
+                    />
+                    {isOnline && (
+                      <div className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white bg-emerald-500 animate-pulse" />
+                    )}
                   </div>
-                  <div>
-                    <h5 className={themeClasses.chatPartnerName}>
+                  <div className="min-w-0">
+                    <h5 className={`text-xs font-semibold ${isLight ? 'text-slate-800' : 'text-slate-200'} flex items-center gap-1.5 truncate`}>
                       {chat.partner.displayName}
                       {(chat.partner.uid === 'orion-ai' || chat.partner.uid === 'oxa-llc') && (
-                        <VerifiedBadge className="w-3.5 h-3.5" />
+                        <VerifiedBadge className="w-3.5 h-3.5 flex-shrink-0" />
                       )}
                     </h5>
-                    <p className={themeClasses.chatLastMsg}>{renderMessageTextWithEmojis(lastMsgText)}</p>
+                    <p className={`text-[10px] ${isActive ? (isLight ? 'text-indigo-600' : 'text-indigo-400') : 'text-slate-500'} truncate mt-0.5 max-w-[170px]`}>
+                      {renderMessageTextWithEmojis(lastMsgText)}
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                  <span className={themeClasses.chatTime}>{lastMsgTime}</span>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className={`text-[9px] font-mono ${isActive ? (isLight ? 'text-indigo-600' : 'text-indigo-400') : 'text-slate-500'}`}>{lastMsgTime}</span>
                   {chat.unread > 0 && (
-                    <span className="w-4 h-4 bg-blue-600 text-[9px] font-bold text-white rounded-full flex items-center justify-center animate-bounce">
+                    <span className="h-4 min-w-[16px] px-1 bg-indigo-600 text-[9px] font-mono font-bold text-white rounded-full flex items-center justify-center animate-bounce">
                       {chat.unread}
                     </span>
                   )}
                 </div>
               </div>
             );
-          })
-        )}
+          };
+
+          return (
+            <div className="space-y-4">
+              {/* CATEGORY: OFFICIALS */}
+              {officialsChats.length > 0 && (
+                <div className="space-y-0.5">
+                  <div className="flex items-center justify-between px-4 mt-3 mb-1 select-none">
+                    <span className={`text-[9px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-400' : 'text-slate-500'} font-mono`}>Officials</span>
+                  </div>
+                  {officialsChats.map(chat => renderChatItem(chat))}
+                </div>
+              )}
+
+              {/* CATEGORY: CHATS */}
+              <div className="space-y-0.5">
+                <div className="flex items-center justify-between px-4 mt-3 mb-1 select-none">
+                  <span className={`text-[9px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-400' : 'text-slate-500'} font-mono`}>Chats</span>
+                  <button 
+                    onClick={() => setShowAddFriend(true)}
+                    className={`p-1 ${isLight ? 'hover:bg-slate-200 text-slate-500' : 'hover:bg-white/5 text-slate-400'} rounded-lg hover:text-white transition active:scale-95`}
+                    title="Add Friend / New Chat"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {normalChats.length === 0 ? (
+                  <div className="px-4 py-2 text-center text-slate-500 text-[9px] italic font-mono">
+                    No normal chats. Click + to add friend.
+                  </div>
+                ) : (
+                  normalChats.map(chat => renderChatItem(chat))
+                )}
+              </div>
+
+              {/* CATEGORY: GROUPS */}
+              <div className="space-y-0.5 pb-6">
+                <div className="flex items-center justify-between px-4 mt-3 mb-1 select-none">
+                  <span className={`text-[9px] uppercase font-bold tracking-widest ${isLight ? 'text-slate-400' : 'text-slate-500'} font-mono`}>Groups</span>
+                  <button 
+                    onClick={() => setShowCreateGroup(true)}
+                    className={`p-1 ${isLight ? 'hover:bg-slate-200 text-slate-500' : 'hover:bg-white/5 text-slate-400'} rounded-lg hover:text-white transition active:scale-95`}
+                    title="Create Group"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {groupsChats.length === 0 ? (
+                  <div className="px-4 py-2 text-center text-slate-500 text-[9px] italic font-mono">
+                    No groups joined. Click + to create.
+                  </div>
+                ) : (
+                  groupsChats.map(chat => renderChatItem(chat))
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
 
@@ -812,71 +984,90 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* MODAL: QR SYSTEM */}
-      {showQR && (
-        <div className="absolute inset-0 z-50 bg-[#07090e]/95 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-xs bg-[#0c1017] border border-slate-800 rounded-2xl p-5 shadow-2xl text-center">
-            <div className="flex justify-between items-center mb-4 text-left">
-              <h4 className="font-bold text-xs text-white">QR Quick Profile Scan</h4>
-              <button onClick={() => setShowQR(false)} className="p-1 hover:bg-slate-800 rounded-full text-slate-400"><X className="w-4 h-4" /></button>
+      {/* MODAL: CREATE GROUP CHAT */}
+      {showCreateGroup && (
+        <div className="absolute inset-0 z-50 bg-[#07090e]/95 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-xs bg-[#0c1017] border border-slate-800 rounded-2xl p-5 shadow-2xl relative overflow-hidden flex flex-col max-h-[90%]">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+              <h4 className="font-bold text-xs text-white">Create Group Chat</h4>
+              <button 
+                onClick={() => {
+                  setShowCreateGroup(false);
+                  setNewGroupName('');
+                  setNewGroupDesc('');
+                  setSelectedFriendsForGroup([]);
+                }} 
+                className="p-1 hover:bg-slate-800 rounded-full text-slate-400 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* QR display card */}
-            <div className="bg-white p-4 rounded-xl inline-block mb-3.5 shadow">
-              {/* Simulated crisp vector QR code of user profile */}
-              <svg className="w-36 h-36 mx-auto" viewBox="0 0 100 100">
-                <rect width="100" height="100" fill="white"/>
-                {/* QR corners */}
-                <rect x="5" y="5" width="25" height="25" fill="black"/>
-                <rect x="8" y="8" width="19" height="19" fill="white"/>
-                <rect x="11" y="11" width="13" height="13" fill="black"/>
-
-                <rect x="70" y="5" width="25" height="25" fill="black"/>
-                <rect x="73" y="8" width="19" height="19" fill="white"/>
-                <rect x="76" y="11" width="13" height="13" fill="black"/>
-
-                <rect x="5" y="70" width="25" height="25" fill="black"/>
-                <rect x="8" y="73" width="19" height="19" fill="white"/>
-                <rect x="11" y="76" width="13" height="13" fill="black"/>
-                
-                {/* Random QR bits for profile code UID */}
-                <rect x="35" y="10" width="10" height="5" fill="black"/>
-                <rect x="50" y="5" width="5" height="15" fill="black"/>
-                <rect x="60" y="15" width="10" height="10" fill="black"/>
-                <rect x="35" y="40" width="30" height="20" fill="black"/>
-                <rect x="10" y="45" width="15" height="10" fill="black"/>
-                <rect x="45" y="75" width="20" height="10" fill="black"/>
-                <rect x="75" y="45" width="10" height="25" fill="black"/>
-                <rect x="85" y="80" width="10" height="10" fill="black"/>
-              </svg>
-            </div>
-
-            <p className="text-[10px] text-slate-400 mb-4 font-mono">
-              Share link code:<br/>
-              <span className="text-indigo-400">konnect://profile/{profile.uid}</span>
-            </p>
-
-            {/* Simulated scan code input */}
-            <div className="border-t border-slate-900 pt-3">
-              <label className="block text-[9px] uppercase font-bold tracking-wider text-slate-500 mb-1.5 text-left">Scan / Enter friend profile code</label>
-              
-              {qrMessage && (
-                <div className="mb-2 p-1.5 bg-red-950/40 border border-red-800/60 rounded-lg text-red-300 text-[9px]">
-                  {qrMessage}
-                </div>
-              )}
-
-              <form onSubmit={handleQRScanSubmit} className="flex gap-2">
+            <form onSubmit={handleCreateGroupSubmit} className="space-y-3.5 overflow-y-auto pr-1 flex-1 custom-scrollbar">
+              <div>
+                <label className="block text-[9px] uppercase font-bold tracking-wider text-slate-500 mb-1">Group Name</label>
                 <input 
                   type="text" 
-                  value={qrCodeInput}
-                  onChange={e => setQrCodeInput(e.target.value)}
-                  placeholder="Paste code (e.g. konnect://profile/...)"
-                  className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-[10px] text-white focus:outline-none focus:border-indigo-500"
+                  required
+                  value={newGroupName}
+                  onChange={e => setNewGroupName(e.target.value)}
+                  placeholder="The Squad ⚽"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-sans"
                 />
-                <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 px-3 rounded-lg text-[10px] text-white font-semibold">Connect</button>
-              </form>
-            </div>
+              </div>
+
+              <div>
+                <label className="block text-[9px] uppercase font-bold tracking-wider text-slate-500 mb-1">Group Description</label>
+                <textarea 
+                  value={newGroupDesc}
+                  onChange={e => setNewGroupDesc(e.target.value)}
+                  placeholder="Official discussion space..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 resize-none font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[9px] uppercase font-bold tracking-wider text-slate-500 mb-1">Select Members ({selectedFriendsForGroup.length})</label>
+                <div className="space-y-1 max-h-32 overflow-y-auto p-2 bg-slate-950 border border-slate-800 rounded-xl custom-scrollbar">
+                  {availableFriends.length === 0 ? (
+                    <p className="text-[10px] text-slate-500 italic text-center py-2 font-mono">No users found in contacts</p>
+                  ) : (
+                    availableFriends.map(friend => {
+                      const isChecked = selectedFriendsForGroup.includes(friend.uid);
+                      return (
+                        <label key={friend.uid} className="flex items-center justify-between cursor-pointer p-1.5 rounded-lg hover:bg-white/5 transition select-none">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <img src={getBotPhotoURL(friend.uid, friend.photoURL)} className="w-5.5 h-5.5 rounded-full object-cover" alt="Avatar" referrerPolicy="no-referrer" />
+                            <span className="text-[11px] text-slate-300 truncate font-medium">{friend.displayName}</span>
+                          </div>
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked}
+                            onChange={() => {
+                              if (isChecked) {
+                                setSelectedFriendsForGroup(prev => prev.filter(uid => uid !== friend.uid));
+                              } else {
+                                setSelectedFriendsForGroup(prev => [...prev, friend.uid]);
+                              }
+                            }}
+                            className="rounded border-slate-800 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 bg-slate-900"
+                          />
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={loadingCreateGroup || !newGroupName.trim()}
+                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-xs font-semibold text-white rounded-xl shadow transition mt-1"
+              >
+                {loadingCreateGroup ? 'Creating...' : 'Create Group Space'}
+              </button>
+            </form>
           </div>
         </div>
       )}

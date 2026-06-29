@@ -8,6 +8,7 @@ import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import Settings from './components/Settings';
 import Stories from './components/Stories';
+import { AppLogo } from './components/AppLogo';
 import { MessageSquare, Shield, Trophy, Film, Sparkles, RefreshCw } from 'lucide-react';
 
 // @ts-ignore
@@ -73,6 +74,22 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  // Periodic Heartbeat Interval to keep user "online" and set lastSeen in real-time
+  useEffect(() => {
+    if (!profile || !user) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const docRef = doc(db, 'profiles', user.uid);
+        await updateDoc(docRef, { lastSeen: new Date(), status: 'online' });
+      } catch (err) {
+        console.error("Error updating heartbeat lastSeen:", err);
+      }
+    }, 60000); // every 60 seconds
+
+    return () => clearInterval(interval);
+  }, [profile, user]);
+
   const syncProfile = async (uid: string) => {
     try {
       const docRef = doc(db, 'profiles', uid);
@@ -80,9 +97,9 @@ export default function App() {
       if (snap.exists()) {
         const pData = snap.data() as UserProfile;
         
-        // Update presence to online
-        await updateDoc(docRef, { status: 'online' });
-        setProfile({ ...pData, status: 'online' });
+        // Update presence to online & update lastSeen timestamp
+        await updateDoc(docRef, { status: 'online', lastSeen: new Date() });
+        setProfile({ ...pData, status: 'online', lastSeen: new Date() });
       } else {
         // Needs onboarding (handled inside Auth component)
         setProfile(null);
@@ -653,10 +670,10 @@ export default function App() {
   };
 
   return (
-    <div className={`h-screen h-[100dvh] w-full max-w-full overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 transition-all duration-300`}>
+    <div className={`h-screen h-[100dvh] w-full max-w-full overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 transition-all duration-300 relative`}>
       
       {/* Sleek dashboard card frame */}
-      <div className={`w-full h-full ${activeThemeObj.card} flex overflow-hidden shadow-2xl relative`}>
+      <div className={`w-full h-full ${activeThemeObj.card} flex overflow-hidden shadow-2xl relative z-10`}>
         
         {/* Mobile Left Sidebar overlay backdrop */}
         {mobileMenuOpen && (
@@ -674,8 +691,8 @@ export default function App() {
           flex flex-col items-center py-6 gap-8 flex-shrink-0
           ${activeThemeObj.card} border-r ${activeThemeObj.border}
         `}>
-          <div className={`w-12 h-12 ${activeThemeObj.primary} rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/20 font-black text-xl text-white select-none`}>
-            K
+          <div className={`w-12 h-12 ${activeThemeObj.primary} rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/10 font-black text-xl text-white select-none`}>
+            <AppLogo className="w-8 h-8" />
           </div>
           <nav className="flex flex-col gap-6 flex-1 text-neutral-400">
             <button 
@@ -716,6 +733,7 @@ export default function App() {
           onOpenStories={navigateToStories}
           onOpenSports={() => {}}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          onOpenChatWithFriend={openChatWithFriend}
         />
 
         {/* PRIMARY MAIN PANEL */}

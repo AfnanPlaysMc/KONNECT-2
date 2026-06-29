@@ -25,6 +25,10 @@ html, body, #root {
   }
 
   /* Elegant visible custom scrollbar for overflow lists */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.3) transparent;
+  }
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -39,6 +43,34 @@ html, body, #root {
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(100, 116, 139, 0.55);
+  }
+
+  /* Swirling float-up particles for themed atmospheres */
+  @keyframes floatUp {
+    0% {
+      transform: translateY(115vh) translateX(0) rotate(0deg);
+      opacity: 0;
+    }
+    10% {
+      opacity: 0.35;
+    }
+    90% {
+      opacity: 0.35;
+    }
+    100% {
+      transform: translateY(-15vh) translateX(25px) rotate(360deg);
+      opacity: 0;
+    }
+  }
+
+  .animate-float-slow {
+    animation: floatUp 16s linear infinite;
+  }
+  .animate-float-medium {
+    animation: floatUp 12s linear infinite;
+  }
+  .animate-float-fast {
+    animation: floatUp 8s linear infinite;
   }
 }
 

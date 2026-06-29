@@ -432,7 +432,7 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
                   <div>
                     <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">Display Name</label>
                     <input 
@@ -483,7 +483,7 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
               <div className="space-y-6">
                 <div>
                   <h4 className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-2.5 font-mono">Select Theme Preset</h4>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {THEMES.map((th) => (
                       <button
                         key={th.id}
@@ -511,7 +511,7 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
                   <p className="text-[10px] text-slate-500 mb-3.5 leading-relaxed">Choose an background image or upload your own to personalize your Konnect app background.</p>
                   
                   {/* Preset Wallpaper Options */}
-                  <div className="grid grid-cols-4 gap-2 mb-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
                     {[
                       { name: 'Sleek Silk', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000' },
                       { name: 'Abstract Blue', url: 'https://images.unsplash.com/photo-1557683316-973673baf926?w=1000' },
@@ -690,7 +690,7 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
                   {selectedContactForSound && (
                     <div>
                       <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1.5">Assign Custom Sound Effect</label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {NOTIFICATION_SOUNDS.map(s => (
                           <button
                             key={s.id}
