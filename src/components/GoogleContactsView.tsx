@@ -193,7 +193,7 @@ export default function GoogleContactsView({ isLight, activeThemeObj }: GoogleCo
               {searchQuery ? 'No contacts matched your search' : 'No contacts found'}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-2.5 max-h-[320px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 gap-2.5 max-h-[320px] md:max-h-[460px] overflow-y-auto pr-1 custom-scrollbar">
               {filteredContacts.map((contact, idx) => {
                 const initials = contact.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
                 const hasPhone = !!contact.phoneNumber;

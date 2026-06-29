@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Plus, Settings as SettingsIcon, Film, Trophy, QrCode, 
-  LogOut, UserPlus, Check, X, Bell, Moon, Sun, ShieldAlert, BadgeHelp, CheckCheck, Menu
+  LogOut, UserPlus, Check, X, Bell, Moon, Sun, ShieldAlert, BadgeHelp, CheckCheck, Menu, Contact
 } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -29,6 +29,7 @@ interface SidebarProps {
   activeChatId: string | null;
   onSelectChat: (chatId: string, partnerProfile: UserProfile) => void;
   onOpenSettings: () => void;
+  onOpenContacts: () => void;
   onOpenStories: () => void;
   onOpenSports: () => void;
   onOpenMobileMenu?: () => void;
@@ -85,7 +86,7 @@ const renderMessageTextWithEmojis = (text: string) => {
 };
 
 export default function Sidebar({ 
-  profile, activeChatId, onSelectChat, onOpenSettings, onOpenStories, onOpenSports, onOpenMobileMenu, onOpenChatWithFriend 
+  profile, activeChatId, onSelectChat, onOpenSettings, onOpenContacts, onOpenStories, onOpenSports, onOpenMobileMenu, onOpenChatWithFriend 
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [chats, setChats] = useState<{ id: string; partner: UserProfile; lastMessage?: any; unread?: number }[]>([]);
@@ -584,35 +585,52 @@ export default function Sidebar({
     <div className={themeClasses.wrapper}>
       
       {/* USER PROFILE CARD HEADER */}
-      <div className={themeClasses.header}>
-        <div className="flex items-center gap-3 min-w-0">
+      <div className={`${themeClasses.header} flex items-center justify-between p-3 gap-2`}>
+        <div className="flex items-center min-w-0 flex-1">
           {/* Hamburger Menu icon for mobile */}
           <button 
             onClick={onOpenMobileMenu}
-            className="sm:hidden p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center flex-shrink-0"
+            className="sm:hidden p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center flex-shrink-0 mr-1"
             title="Open Menu"
           >
             <Menu className="w-5 h-5 text-slate-400" />
           </button>
 
-          <div className="relative flex-shrink-0">
-            <img src={profile.photoURL} alt="Avatar" className="w-10 h-10 rounded-full object-cover border border-slate-300" />
-            <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${profile.stealthMode ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+          {/* APP LOGO */}
+          <div className="p-1.5 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
+            <AppLogo className="w-5 h-5 text-white" />
           </div>
-          <div className="min-w-0">
-            <h3 className={themeClasses.headerText}>{profile.displayName}</h3>
-            <p className={themeClasses.usernameText}>@{profile.username}</p>
-          </div>
-        </div>
 
-        <div className="flex gap-1 flex-shrink-0">
-          <button 
-            onClick={onOpenSettings}
-            title="Settings"
-            className={themeClasses.iconBtn}
-          >
-            <SettingsIcon className="w-4 h-4" />
-          </button>
+          {/* VERTICAL SEPARATOR LINE */}
+          <div className={`h-8 w-[1px] ${isLight ? 'bg-slate-200' : 'bg-white/10'} mx-3 flex-shrink-0`} />
+
+          {/* USER AVATAR */}
+          <div className="relative flex-shrink-0 mr-2.5">
+            <img src={profile.photoURL} alt="Avatar" className="w-9 h-9 rounded-full object-cover border border-slate-300" />
+            <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-white ${profile.stealthMode ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+          </div>
+
+          {/* USER DETAILS & SETTINGS COG & CONTACT ICON */}
+          <div className="min-w-0 flex-1 flex flex-col justify-center">
+            <h3 className={`${themeClasses.headerText} leading-tight font-bold text-xs truncate`}>{profile.displayName}</h3>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={`${themeClasses.usernameText} truncate text-[10px]`}>@{profile.username}</span>
+              <button 
+                onClick={onOpenSettings}
+                title="Settings"
+                className="text-slate-400 hover:text-indigo-400 transition p-0.5 rounded flex items-center justify-center flex-shrink-0"
+              >
+                <SettingsIcon className="w-3.5 h-3.5" />
+              </button>
+              <button 
+                onClick={onOpenContacts}
+                title="Google Contacts Sync & Invite"
+                className="text-blue-500 hover:text-blue-400 transition p-0.5 rounded flex items-center justify-center flex-shrink-0"
+              >
+                <Contact className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -799,7 +817,7 @@ export default function Sidebar({
                         <VerifiedBadge className="w-3.5 h-3.5 flex-shrink-0" />
                       )}
                     </h5>
-                    <p className={`text-[10px] ${isActive ? (isLight ? 'text-indigo-600' : 'text-indigo-400') : 'text-slate-500'} truncate mt-0.5 max-w-[170px]`}>
+                    <p className={`text-[10px] ${isActive ? (isLight ? 'text-indigo-600' : 'text-indigo-400') : 'text-slate-500'} w-full truncate mt-0.5`}>
                       {renderMessageTextWithEmojis(lastMsgText)}
                     </p>
                   </div>

@@ -9,7 +9,7 @@ import ChatWindow from './components/ChatWindow';
 import Settings from './components/Settings';
 import Stories from './components/Stories';
 import { AppLogo } from './components/AppLogo';
-import { MessageSquare, Shield, Trophy, Film, Sparkles, RefreshCw, X } from 'lucide-react';
+import { MessageSquare, Shield, Trophy, Film, Sparkles, RefreshCw, X, Contact } from 'lucide-react';
 import { setGoogleAccessToken } from './googleTokenStore';
 
 // @ts-ignore
@@ -715,15 +715,22 @@ export default function App() {
               <Film className="w-5 h-5" />
             </button>
             <button 
-              onClick={navigateToSettings}
-              className={getNavBtnClass(showSettings)}
+              onClick={() => navigateToSettings('contacts')}
+              className={getNavBtnClass(showSettings && settingsTab === 'contacts')}
+              title="Google Contacts"
+            >
+              <Contact className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={() => navigateToSettings('profile')}
+              className={getNavBtnClass(showSettings && settingsTab !== 'contacts')}
               title="Settings"
             >
               <Shield className="w-5 h-5" />
             </button>
           </nav>
           <div className="mt-auto">
-            <button onClick={navigateToSettings} className="w-10 h-10 rounded-full border-2 border-emerald-500 overflow-hidden bg-neutral-700 relative group transition hover:scale-105">
+            <button onClick={() => navigateToSettings('profile')} className="w-10 h-10 rounded-full border-2 border-emerald-500 overflow-hidden bg-neutral-700 relative group transition hover:scale-105">
               <img src={profile.photoURL} alt="pfp" className="w-full h-full object-cover" />
             </button>
           </div>
@@ -735,6 +742,7 @@ export default function App() {
           activeChatId={activeChatId}
           onSelectChat={handleSelectChat}
           onOpenSettings={() => navigateToSettings('profile')}
+          onOpenContacts={() => navigateToSettings('contacts')}
           onOpenStories={navigateToStories}
           onOpenSports={() => {}}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}

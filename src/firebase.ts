@@ -1,24 +1,18 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-
-// Configuration from firebase-applet-config.json
-const firebaseConfig = {
-  apiKey: "AIzaSyBdn7J3PkrIMHHSbQnlfNmAFrjd2Cb1YHM",
-  authDomain: "gen-lang-client-0349257004.firebaseapp.com",
-  projectId: "gen-lang-client-0349257004",
-  storageBucket: "gen-lang-client-0349257004.firebasestorage.app",
-  messagingSenderId: "774499225300",
-  appId: "1:774499225300:web:7b16ba0d468a777807f541"
-};
+import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with custom database ID
-const db = getFirestore(app, "ai-studio-1e13eb29-90d7-4200-9ffc-8dd3ddfc6cd8");
+// Initialize Firestore with custom database ID from config
+const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/contacts.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/contacts.other.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/user.phonenumbers.read');
 
 export enum OperationType {
   CREATE = 'create',

@@ -4,13 +4,15 @@ import {
   createUserWithEmailAndPassword, 
   signInWithPopup, 
   onAuthStateChanged,
-  signOut
+  signOut,
+  GoogleAuthProvider
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../firebase';
 import { UserProfile, THEMES } from '../types';
 import { Shield, Key, Mail, Phone, ArrowRight, User, Check, Flame, Upload } from 'lucide-react';
 import { AppLogo } from './AppLogo';
+import { setGoogleAccessToken } from '../googleTokenStore';
 
 interface AuthProps {
   onAuthSuccess: (profile: UserProfile) => void;
@@ -144,6 +146,10 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     setLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setGoogleAccessToken(credential.accessToken);
+      }
       await checkUserProfile(result.user.uid);
     } catch (err: any) {
       console.warn('Google Sign-In failed', err);
@@ -243,7 +249,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       <div className="absolute top-20 left-20 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl" />
       <div className="absolute bottom-20 right-20 w-96 h-96 bg-fuchsia-500/10 rounded-full blur-3xl" />
 
-      <div className="relative w-full max-w-lg bg-[#0e121a] border border-slate-800/80 rounded-2xl p-8 shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg bg-[#0e121a] border border-slate-800/80 rounded-2xl p-5 sm:p-8 shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar">
         {/* Top Header Logo */}
         <div className="flex flex-col items-center mb-8 text-center">
           <div className="p-2.5 bg-blue-600/10 rounded-2xl mb-3 shadow-lg shadow-blue-500/10 border border-blue-500/20">
