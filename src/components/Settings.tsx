@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, Shield, Palette, Volume2, User, EyeOff, Check, Ban, AlertCircle, 
-  Upload, Sparkles, UserCheck, Smartphone, Eye, LogOut, ArrowLeft
+  Upload, Sparkles, UserCheck, Smartphone, Eye, LogOut, ArrowLeft, Users
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { doc, updateDoc, getDocs, collection, query, where, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile, THEMES, NOTIFICATION_SOUNDS } from '../types';
+import GoogleContactsView from './GoogleContactsView';
 
 interface SettingsProps {
   profile: UserProfile;
   onUpdateProfile: (updated: UserProfile) => void;
   onClose: () => void;
+  initialTab?: 'profile' | 'theme' | 'privacy' | 'sounds' | 'contacts';
 }
 
-export default function Settings({ profile, onUpdateProfile, onClose }: SettingsProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'theme' | 'privacy' | 'sounds'>('profile');
+export default function Settings({ profile, onUpdateProfile, onClose, initialTab = 'profile' }: SettingsProps) {
+  const [activeTab, setActiveTab] = useState<'profile' | 'theme' | 'privacy' | 'sounds' | 'contacts'>(initialTab);
   
   const activeThemeObj = THEMES.find(t => t.id === (profile.theme || 'deep-dark')) || THEMES[0];
   const isLight = activeThemeObj.id === 'blue-white';
@@ -339,6 +341,13 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
               >
                 <Volume2 className="w-4 h-4" /> <span className="hidden sm:inline md:inline">Custom Sounds</span><span className="sm:hidden">Sounds</span>
               </button>
+
+              <button 
+                onClick={() => setActiveTab('contacts')}
+                className={`flex-shrink-0 text-left px-3 py-2 text-xs font-semibold rounded-xl flex items-center gap-2.5 transition ${activeTab === 'contacts' ? (isLight ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-indigo-600/10 border border-indigo-500/20 text-indigo-400') : (isLight ? 'text-slate-500 hover:text-slate-800 hover:bg-slate-100' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5')}`}
+              >
+                <Users className="w-4 h-4" /> <span className="hidden sm:inline md:inline">Invite Contacts</span><span className="sm:hidden">Invite</span>
+              </button>
             </div>
           </div>
 
@@ -379,12 +388,14 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
                   {activeTab === 'theme' && 'Visual Spaces'}
                   {activeTab === 'privacy' && 'Advanced Stealth Space'}
                   {activeTab === 'sounds' && 'Acoustic Notification Mapping'}
+                  {activeTab === 'contacts' && 'Sync & Invite Google Contacts'}
                 </h3>
                 <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'} line-clamp-1`}>
                   {activeTab === 'profile' && 'Change your name, custom username bio or banner.'}
                   {activeTab === 'theme' && 'Swap styles between AMOLED obsidian and vibrant cyber neon.'}
                   {activeTab === 'privacy' && 'Stealth state control, block list editing and stories list.'}
                   {activeTab === 'sounds' && 'Assign custom auditory signatures to individual contacts.'}
+                  {activeTab === 'contacts' && 'Invite contacts to join Konnect and chat via prefilled secure SMS.'}
                 </p>
               </div>
             </div>
@@ -722,6 +733,11 @@ export default function Settings({ profile, onUpdateProfile, onClose }: Settings
                   <span>These audio mapping specifications use local synthesizer components to alert you when chosen contacts post messages or trigger real-time games.</span>
                 </div>
               </div>
+            )}
+
+            {/* TAB: CONTACTS */}
+            {activeTab === 'contacts' && (
+              <GoogleContactsView isLight={isLight} activeThemeObj={activeThemeObj} />
             )}
           </div>
         </div>

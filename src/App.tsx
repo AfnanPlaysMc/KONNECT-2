@@ -9,7 +9,8 @@ import ChatWindow from './components/ChatWindow';
 import Settings from './components/Settings';
 import Stories from './components/Stories';
 import { AppLogo } from './components/AppLogo';
-import { MessageSquare, Shield, Trophy, Film, Sparkles, RefreshCw } from 'lucide-react';
+import { MessageSquare, Shield, Trophy, Film, Sparkles, RefreshCw, X } from 'lucide-react';
+import { setGoogleAccessToken } from './googleTokenStore';
 
 // @ts-ignore
 import orionAiLogo from './assets/images/orion_ai_logo_1782673841547.jpg';
@@ -33,6 +34,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showStories, setShowStories] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'theme' | 'privacy' | 'sounds' | 'contacts'>('profile');
+  const [bannerHidden, setBannerHidden] = useState(() => localStorage.getItem('konnect_invite_banner_hidden') === 'true');
 
   const [loading, setLoading] = useState(true);
   const [hasRoutedOnMount, setHasRoutedOnMount] = useState(false);
@@ -48,6 +51,7 @@ export default function App() {
         setProfile(null);
         setActiveChatId(null);
         setActivePartner(null);
+        setGoogleAccessToken(null);
         setLoading(false);
       }
     });
@@ -446,7 +450,8 @@ export default function App() {
     }
   };
 
-  const navigateToSettings = () => {
+  const navigateToSettings = (tab?: 'profile' | 'theme' | 'privacy' | 'sounds' | 'contacts') => {
+    setSettingsTab(tab || 'profile');
     setShowSettings(true);
     setShowStories(false);
     setMobileMenuOpen(false);
@@ -729,7 +734,7 @@ export default function App() {
           profile={profile}
           activeChatId={activeChatId}
           onSelectChat={handleSelectChat}
-          onOpenSettings={navigateToSettings}
+          onOpenSettings={() => navigateToSettings('profile')}
           onOpenStories={navigateToStories}
           onOpenSports={() => {}}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
@@ -737,7 +742,43 @@ export default function App() {
         />
 
         {/* PRIMARY MAIN PANEL */}
-        <div className={`flex-1 flex flex-col bg-slate-950/10 relative h-full ${activeChatId ? 'flex' : 'hidden sm:flex'}`}>
+        <div className={`flex-1 flex flex-col bg-slate-950/10 relative h-full overflow-hidden ${activeChatId ? 'flex' : 'hidden sm:flex'}`}>
+          {/* Top Invitation Banner */}
+          {!bannerHidden && (
+            <div className={`flex-shrink-0 px-4 py-3 flex items-center justify-between gap-3 text-xs font-bold border-b transition-all duration-300 animate-fadeIn ${
+              isLight 
+                ? 'bg-blue-50/90 border-blue-100 text-blue-700 shadow-sm' 
+                : 'bg-indigo-950/45 border-indigo-900/50 text-indigo-200 shadow'
+            }`}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="flex-shrink-0 text-indigo-400">✨</span>
+                <p className="truncate uppercase tracking-wider font-semibold">WANT TO MAKE YOUR CONTACTS JOIN?</p>
+                <button 
+                  onClick={() => navigateToSettings('contacts')}
+                  className={`ml-3 px-3 py-1 text-[9px] uppercase font-mono tracking-wider font-bold rounded-xl border transition-all hover:scale-105 active:scale-95 ${
+                    isLight 
+                      ? 'bg-blue-600 hover:bg-blue-700 border-blue-600 text-white' 
+                      : 'bg-indigo-600 hover:bg-indigo-500 border-indigo-500 text-white'
+                  }`}
+                >
+                  Invite Them
+                </button>
+              </div>
+              <button 
+                onClick={() => {
+                  setBannerHidden(true);
+                  localStorage.setItem('konnect_invite_banner_hidden', 'true');
+                }}
+                className={`p-1.5 rounded-full transition ${
+                  isLight ? 'hover:bg-blue-100 text-blue-500 hover:text-blue-700' : 'hover:bg-indigo-900/40 text-indigo-400 hover:text-white'
+                }`}
+                title="Dismiss Banner"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {activeChatId && activePartner ? (
             <ChatWindow 
               chatId={activeChatId}
@@ -793,6 +834,7 @@ export default function App() {
             profile={profile}
             onUpdateProfile={handleUpdateProfileState}
             onClose={() => setShowSettings(false)}
+            initialTab={settingsTab}
           />
         )}
 
