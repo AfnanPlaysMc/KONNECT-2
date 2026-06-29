@@ -674,8 +674,48 @@ export default function App() {
       : 'p-3 rounded-xl cursor-pointer transition text-neutral-500 hover:text-neutral-300 hover:bg-white/5';
   };
 
+  const renderBackgroundParticles = () => {
+    if (currentThemeId !== 'football' && currentThemeId !== 'cricket') return null;
+
+    const particleEmoji = currentThemeId === 'football' ? '⚽' : '🏏';
+    const particles = [
+      { id: 1, left: '5%', delay: '0s', speed: 'animate-float-slow', size: 'text-2xl sm:text-3xl' },
+      { id: 2, left: '15%', delay: '4s', speed: 'animate-float-medium', size: 'text-xl sm:text-2xl' },
+      { id: 3, left: '28%', delay: '1s', speed: 'animate-float-fast', size: 'text-lg sm:text-xl' },
+      { id: 4, left: '40%', delay: '6s', speed: 'animate-float-slow', size: 'text-2xl sm:text-3xl' },
+      { id: 5, left: '52%', delay: '2s', speed: 'animate-float-medium', size: 'text-xl sm:text-2xl' },
+      { id: 6, left: '65%', delay: '8s', speed: 'animate-float-fast', size: 'text-lg sm:text-xl' },
+      { id: 7, left: '78%', delay: '3s', speed: 'animate-float-slow', size: 'text-2xl sm:text-3xl' },
+      { id: 8, left: '92%', delay: '5s', speed: 'animate-float-medium', size: 'text-xl sm:text-2xl' },
+      { id: 9, left: '10%', delay: '7s', speed: 'animate-float-fast', size: 'text-lg' },
+      { id: 10, left: '35%', delay: '9s', speed: 'animate-float-slow', size: 'text-2xl' },
+      { id: 11, left: '60%', delay: '5s', speed: 'animate-float-medium', size: 'text-xl' },
+      { id: 12, left: '85%', delay: '10s', speed: 'animate-float-fast', size: 'text-lg' },
+    ];
+
+    return (
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        {particles.map((p) => (
+          <div
+            key={p.id}
+            className={`absolute bottom-0 select-none opacity-25 ${p.speed} ${p.size}`}
+            style={{
+              left: p.left,
+              animationDelay: p.delay,
+            }}
+          >
+            {particleEmoji}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className={`h-screen h-[100dvh] w-full max-w-full overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 transition-all duration-300 relative`}>
+      
+      {/* Background Particles Overlay */}
+      {renderBackgroundParticles()}
       
       {/* Sleek dashboard card frame */}
       <div className={`w-full h-full ${activeThemeObj.card} flex overflow-hidden shadow-2xl relative z-10`}>

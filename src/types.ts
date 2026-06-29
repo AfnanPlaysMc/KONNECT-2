@@ -109,7 +109,9 @@ export const THEMES = [
   { id: 'midnight-blue', name: 'Midnight Ocean', bg: 'bg-[#0b132b]', border: 'border-[#1c2541]', text: 'text-[#e0e1dd]', card: 'bg-[#1c2541]', primary: 'bg-[#3a86c8]', accent: 'text-[#3a86c8]' },
   { id: 'emerald', name: 'Emerald Cyber', bg: 'bg-[#05110c]', border: 'border-[#0a2f1d]', text: 'text-[#e6f4ea]', card: 'bg-[#081e14]', primary: 'bg-[#10b981]', accent: 'text-[#10b981]' },
   { id: 'crimson-velvet', name: 'Crimson Night', bg: 'bg-[#140507]', border: 'border-[#300a0d]', text: 'text-[#fbeef0]', card: 'bg-[#20080a]', primary: 'bg-[#e11d48]', accent: 'text-[#f43f5e]' },
-  { id: 'cyberpunk', name: 'Neon Cyber', bg: 'bg-[#0d0211]', border: 'border-[#2a0835]', text: 'text-[#fae8ff]', card: 'bg-[#1a0522]', primary: 'bg-[#d946ef]', accent: 'text-[#f472b6]' }
+  { id: 'cyberpunk', name: 'Neon Cyber', bg: 'bg-[#0d0211]', border: 'border-[#2a0835]', text: 'text-[#fae8ff]', card: 'bg-[#1a0522]', primary: 'bg-[#d946ef]', accent: 'text-[#f472b6]' },
+  { id: 'football', name: 'Football Arena', bg: 'bg-[#032213]', border: 'border-[#0b3c22]', text: 'text-[#e2f3e8]', card: 'bg-[#062c19]/90', primary: 'bg-emerald-500', accent: 'text-emerald-400' },
+  { id: 'cricket', name: 'Cricket Field', bg: 'bg-[#14230c]', border: 'border-[#263c1a]', text: 'text-[#f1f7ee]', card: 'bg-[#1c2f14]/90', primary: 'bg-[#78b159]', accent: 'text-[#8dd35f]' }
 ];
 
 export const NOTIFICATION_SOUNDS = [

@@ -1,5 +1,5 @@
-import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { googleProvider } from './firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from './firebase';
 
 // In-memory cache for the access token as mandated by safety guidelines
 let cachedAccessToken: string | null = null;
@@ -24,8 +24,6 @@ export interface GoogleContact {
  * Handles the Google Sign-in to fetch or refresh the Google OAuth Access Token
  */
 export async function authenticateGoogleForContacts(): Promise<string> {
-  const auth = getAuth();
-  
   // Configure Google Auth Provider with contacts scopes
   googleProvider.addScope('https://www.googleapis.com/auth/contacts.readonly');
   googleProvider.addScope('https://www.googleapis.com/auth/contacts.other.readonly');
