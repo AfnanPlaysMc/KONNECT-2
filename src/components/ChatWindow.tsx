@@ -376,6 +376,8 @@ export default function ChatWindow({
   const callIntervalRef = useRef<any>(null);
   const callRingNode = useRef<any>(null);
   const jitsiApiRef = useRef<any>(null);
+  const [jitsiSessionKey, setJitsiSessionKey] = useState(0);
+  const [jitsiDomain, setJitsiDomain] = useState('meet.ffmuc.net'); // Default to meet.ffmuc.net (open-source public server, completely free & unlimited, no login or host account required!)
 
   // Initialize official Jitsi Meet External API when call is connected
   useEffect(() => {
@@ -389,8 +391,7 @@ export default function ChatWindow({
           }
           
           try {
-            // Using meet.jit.si, the official public open-source Jitsi server requested by the user.
-            const domain = 'meet.jit.si';
+            const domain = jitsiDomain;
             const options = {
               roomName: callSession.roomId,
               width: '100%',
@@ -411,8 +412,8 @@ export default function ChatWindow({
                   enabled: false
                 },
                 hosts: {
-                  domain: 'meet.jit.si',
-                  muc: 'muc.meet.jit.si'
+                  domain: domain,
+                  muc: `muc.${domain}`
                 },
                 maxMeetingDuration: 3600, // Guarantee up to 1 hour (3600 seconds) duration
                 p2p: {
@@ -462,7 +463,7 @@ export default function ChatWindow({
         }
       };
     }
-  }, [callSession?.status, callSession?.roomId, callSession?.type]);
+  }, [callSession?.status, callSession?.roomId, callSession?.type, jitsiSessionKey, jitsiDomain]);
 
 
 
@@ -636,8 +637,17 @@ export default function ChatWindow({
               // Start timer if not already running
               if (!callIntervalRef.current) {
                 setCallTimer(0);
+                setJitsiSessionKey(0); // Reset session key for new call
                 callIntervalRef.current = setInterval(() => {
-                  setCallTimer(prev => prev + 1);
+                  setCallTimer(prev => {
+                    const next = prev + 1;
+                    // Auto-restart Jitsi Meet iframe at 4 minutes 50 seconds (290 seconds) to bypass any session limits automatically
+                    if (next > 0 && next % 290 === 0) {
+                      console.log("Auto-restarting Jitsi call to extend duration and bypass limits...");
+                      setJitsiSessionKey(k => k + 1);
+                    }
+                    return next;
+                  });
                 }, 1000);
               }
             } else if (activeCall.status === 'ringing') {
@@ -1914,11 +1924,53 @@ export default function ChatWindow({
                 </div>
               )}
 
-              {/* Connection timer info */}
+              {/* Connection timer and server info */}
               {callSession.status === 'connected' && (
-                <p className="text-xl font-semibold font-mono text-white tracking-widest animate-pulse mb-2">
-                  {Math.floor(callTimer / 60).toString().padStart(2, '0')}:{(callTimer % 60).toString().padStart(2, '0')}
-                </p>
+                <div className="space-y-1 mb-2">
+                  <p className="text-xl font-semibold font-mono text-white tracking-widest animate-pulse">
+                    {Math.floor(callTimer / 60).toString().padStart(2, '0')}:{(callTimer % 60).toString().padStart(2, '0')}
+                  </p>
+                  
+                  {/* Call server & limit bypass indicators */}
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 text-[10px] text-slate-400 bg-slate-950/40 p-2.5 border border-slate-900 rounded-xl max-w-lg mx-auto">
+                    <div className="flex items-center gap-1.5 text-emerald-400 font-semibold font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                      <span>SECURE SERVER: {jitsiDomain}</span>
+                    </div>
+                    <span className="hidden sm:inline text-slate-700 font-thin">|</span>
+                    <span className="text-slate-300">Auto-extend active (no 5m limits)</span>
+                    <span className="hidden sm:inline text-slate-700 font-thin">|</span>
+                    <button 
+                      onClick={() => setJitsiSessionKey(k => k + 1)}
+                      className="px-2 py-0.5 bg-indigo-500/85 hover:bg-indigo-600 text-[9px] font-bold text-white rounded transition active:scale-95 flex items-center gap-1 cursor-pointer"
+                    >
+                      🔄 Refresh Iframe
+                    </button>
+                  </div>
+                  
+                  {/* Option to change Jitsi server in real time */}
+                  <div className="flex items-center justify-center gap-2 text-[9px] text-slate-500 pt-1">
+                    <span>Change Server:</span>
+                    <button 
+                      onClick={() => { setJitsiDomain('meet.ffmuc.net'); setJitsiSessionKey(k => k + 1); }}
+                      className={`px-1.5 py-0.5 rounded transition cursor-pointer ${jitsiDomain === 'meet.ffmuc.net' ? 'bg-emerald-950 text-emerald-400 font-semibold border border-emerald-900/40' : 'hover:text-slate-300'}`}
+                    >
+                      Freifunk (No Login)
+                    </button>
+                    <button 
+                      onClick={() => { setJitsiDomain('jitsi.riot.im'); setJitsiSessionKey(k => k + 1); }}
+                      className={`px-1.5 py-0.5 rounded transition cursor-pointer ${jitsiDomain === 'jitsi.riot.im' ? 'bg-indigo-950 text-indigo-400 font-semibold border border-indigo-900/40' : 'hover:text-slate-300'}`}
+                    >
+                      Riot (No Login)
+                    </button>
+                    <button 
+                      onClick={() => { setJitsiDomain('meet.jit.si'); setJitsiSessionKey(k => k + 1); }}
+                      className={`px-1.5 py-0.5 rounded transition cursor-pointer ${jitsiDomain === 'meet.jit.si' ? 'bg-amber-950 text-amber-400 border border-amber-900/40' : 'hover:text-slate-300'}`}
+                    >
+                      Official (Requires Login)
+                    </button>
+                  </div>
+                </div>
               )}
 
               {/* Simulated sound warning label */}

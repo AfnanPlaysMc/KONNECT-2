@@ -9,6 +9,7 @@ import { doc, updateDoc, getDocs, collection, query, where, getDoc } from 'fireb
 import { db } from '../firebase';
 import { UserProfile, THEMES, NOTIFICATION_SOUNDS } from '../types';
 import GoogleContactsView from './GoogleContactsView';
+import { motion } from 'motion/react';
 
 interface SettingsProps {
   profile: UserProfile;
@@ -430,7 +431,14 @@ export default function Settings({ profile, onUpdateProfile, onClose, initialTab
 
             {/* TAB: PROFILE */}
             {activeTab === 'profile' && (
-              <form onSubmit={handleUpdateProfile} className="space-y-4">
+              <motion.div
+                key="profile-tab"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <form onSubmit={handleUpdateProfile} className="space-y-4">
                 {/* Banner Banner */}
                 <div className="relative group rounded-xl overflow-hidden h-24 bg-slate-800">
                   <img src={banner} alt="Banner" className="w-full h-full object-cover opacity-80" />
@@ -495,11 +503,19 @@ export default function Settings({ profile, onUpdateProfile, onClose, initialTab
                   {loading ? 'Saving ID parameters...' : 'Lock profile parameters'}
                 </button>
               </form>
+              </motion.div>
             )}
 
             {/* TAB: THEMES */}
             {activeTab === 'theme' && (
-              <div className="space-y-6">
+              <motion.div
+                key="theme-tab"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-6"
+              >
                 <div>
                   <h4 className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-2.5 font-mono">Select Theme Preset</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -587,12 +603,19 @@ export default function Settings({ profile, onUpdateProfile, onClose, initialTab
                     )}
                   </div>
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {/* TAB: PRIVACY */}
             {activeTab === 'privacy' && (
-              <div className="space-y-6">
+              <motion.div
+                key="privacy-tab"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-6"
+              >
                 {/* Toggles */}
                 <div className="space-y-3.5 bg-slate-950/30 border border-slate-900 p-4 rounded-2xl">
                   <div className="flex items-center justify-between">
@@ -681,12 +704,19 @@ export default function Settings({ profile, onUpdateProfile, onClose, initialTab
                     </div>
                   )}
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {/* TAB: SOUNDS */}
             {activeTab === 'sounds' && (
-              <div className="space-y-5">
+              <motion.div
+                key="sounds-tab"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-5"
+              >
                 <div className="bg-slate-950/30 border border-slate-900 p-4 rounded-2xl space-y-4">
                   <div>
                     <label className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1.5">Select Contact Mapping</label>
@@ -740,12 +770,20 @@ export default function Settings({ profile, onUpdateProfile, onClose, initialTab
                   <Volume2 className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
                   <span>These audio mapping specifications use local synthesizer components to alert you when chosen contacts post messages or trigger real-time games.</span>
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {/* TAB: CONTACTS */}
             {activeTab === 'contacts' && (
-              <GoogleContactsView isLight={isLight} activeThemeObj={activeThemeObj} />
+              <motion.div
+                key="contacts-tab"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+              >
+                <GoogleContactsView isLight={isLight} activeThemeObj={activeThemeObj} />
+              </motion.div>
             )}
           </div>
         </div>

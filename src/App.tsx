@@ -625,6 +625,32 @@ export default function App() {
     };
   }, [profile]);
 
+  // Global keyboard shortcuts: Ctrl+1 (Dashboard), Ctrl+2 (Stories), Ctrl+3 (Settings)
+  useEffect(() => {
+    if (!profile) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if Ctrl or Cmd key is pressed
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          navigateToDashboard();
+        } else if (e.key === '2') {
+          e.preventDefault();
+          navigateToStories();
+        } else if (e.key === '3') {
+          e.preventDefault();
+          navigateToSettings();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [profile]);
+
   useEffect(() => {
     if (loading) return;
     if (!profile) {

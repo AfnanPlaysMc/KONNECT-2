@@ -113,7 +113,7 @@ export default function GoogleContactsView({ isLight, activeThemeObj }: GoogleCo
           <div className="max-w-md">
             <h4 className={`text-sm font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>Connect your Google Contacts</h4>
             <p className={`text-xs mt-1 leading-relaxed ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              Sync your Google contacts to quickly invite friends to **Konnect by Oxa LLC** and chat securely in real-time. Google Might say "NOT SAFE" but dont worry about your privacy!
+              Sync your Google contacts to quickly invite friends to **Konnect by Oxa LLC** and chat securely in real-time.
             </p>
           </div>
           
@@ -134,6 +134,8 @@ export default function GoogleContactsView({ isLight, activeThemeObj }: GoogleCo
               </>
             )}
           </button>
+
+
           
           {error && (
             <p className="text-[11px] text-rose-400 flex items-center gap-1 mt-2">

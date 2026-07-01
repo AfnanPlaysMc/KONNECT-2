@@ -160,18 +160,28 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   };
 
   const checkUsernameAvailability = async (uname: string): Promise<boolean> => {
-    const q = query(collection(db, 'profiles'), where('username', '==', uname.trim().toLowerCase()));
-    const querySnap = await getDocs(q);
-    if (querySnap.empty) return true;
-    
-    // Available if it belongs to the current user
-    let available = true;
-    querySnap.forEach((doc) => {
-      if (doc.id !== tempProfile.uid) {
-        available = false;
-      }
-    });
-    return available;
+    const targetUid = tempProfile.uid || auth.currentUser?.uid;
+    if (!targetUid) {
+      console.warn('No active user UID during username availability check.');
+      return true;
+    }
+    try {
+      const q = query(collection(db, 'profiles'), where('username', '==', uname.trim().toLowerCase()));
+      const querySnap = await getDocs(q);
+      if (querySnap.empty) return true;
+      
+      // Available if it belongs to the current user
+      let available = true;
+      querySnap.forEach((doc) => {
+        if (doc.id !== targetUid) {
+          available = false;
+        }
+      });
+      return available;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.LIST, 'profiles (username check)');
+      return false;
+    }
   };
 
   const handleCompleteOnboarding = async (e: React.FormEvent) => {
@@ -186,6 +196,13 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       return;
     }
 
+    const activeUid = tempProfile.uid || auth.currentUser?.uid;
+    if (!activeUid) {
+      setError('Authentication context is missing. Please try signing in again.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const isAvailable = await checkUsernameAvailability(cleanUsername);
       if (!isAvailable) {
@@ -193,11 +210,11 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       }
 
       const newProfile: UserProfile = {
-        uid: tempProfile.uid,
+        uid: activeUid,
         displayName: profileName.trim() || 'Anonymous User',
         username: cleanUsername,
-        email: tempProfile.email || '',
-        phoneNumber: tempProfile.phoneNumber || '',
+        email: tempProfile.email || auth.currentUser?.email || '',
+        phoneNumber: tempProfile.phoneNumber || auth.currentUser?.phoneNumber || '',
         photoURL: selectedPfp,
         bannerURL: selectedBanner,
         bio: bio.trim(),
@@ -212,7 +229,11 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         lastSeen: new Date()
       };
 
-      await setDoc(doc(db, 'profiles', tempProfile.uid), newProfile);
+      try {
+        await setDoc(doc(db, 'profiles', activeUid), newProfile);
+      } catch (writeErr) {
+        handleFirestoreError(writeErr, OperationType.CREATE, `profiles/${activeUid}`);
+      }
       onAuthSuccess(newProfile);
     } catch (err: any) {
       setError(err.message || 'Failed to complete profile onboarding');
