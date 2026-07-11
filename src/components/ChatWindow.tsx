@@ -4,7 +4,8 @@ import {
   Phone, Video, MoreVertical, Send, Smile, Play, Pause, RefreshCw, 
   Smile as EmojiIcon, ShieldAlert, BadgeHelp, EyeOff, Film, Ban,
   Volume2, Mic, Check, CheckCheck, Gamepad2, Sparkles, Image, Zap, Flame, User, X,
-  Plus, ArrowLeft, Search, PhoneOff, Settings as SettingsIcon, Crown, UserPlus, UserMinus, Maximize2, Minimize2, Download
+  Plus, ArrowLeft, Search, PhoneOff, Settings as SettingsIcon, Crown, UserPlus, UserMinus, Maximize2, Minimize2, Download,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 import { 
   collection, query, orderBy, onSnapshot, addDoc, updateDoc, 
@@ -13,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile, Message, LIST_OF_GAMES } from '../types';
+import { sendPushToUser } from '../lib/webPush';
 import { EMOJI_LIST } from '../emojis';
 import { SecureAvatar } from './SecureAvatar';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -100,13 +102,36 @@ const SecureImage = ({ src, className, ...props }: { src: string; className?: st
   );
 };
 
+// Helper to escape special characters for regex search
+const escapeRegExp = (str: string) => {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+// Sub-helper to highlight matched search terms safely in text segments
+const highlightMatch = (text: string, query: string) => {
+  if (!query) return text;
+  const escaped = escapeRegExp(query);
+  const regex = new RegExp(`(${escaped})`, 'gi');
+  const segments = text.split(regex);
+  return segments.map((seg, idx) => {
+    if (seg.toLowerCase() === query.toLowerCase()) {
+      return (
+        <mark key={idx} className="bg-amber-400/35 text-inherit font-bold px-0.5 rounded shadow-sm border-b border-amber-500">
+          {seg}
+        </mark>
+      );
+    }
+    return seg;
+  });
+};
+
 // Helper to parse and render standard text with 3D animated Noto Emojis
-const renderEmojisOnly = (text: string) => {
+const renderEmojisOnly = (text: string, highlightText?: string) => {
   if (!text) return '';
   const EMOJI_REGEX = /(\p{Emoji_Presentation})/gu;
   const parts = text.split(EMOJI_REGEX);
   if (parts.length === 1) {
-    return text;
+    return highlightText ? highlightMatch(text, highlightText) : text;
   }
   return parts.map((part, i) => {
     if (part && part.match(/\p{Emoji_Presentation}/u)) {
@@ -133,12 +158,12 @@ const renderEmojisOnly = (text: string) => {
         </span>
       );
     }
-    return part;
+    return highlightText ? <React.Fragment key={i}>{highlightMatch(part, highlightText)}</React.Fragment> : part;
   });
 };
 
 // General-purpose parser supporting blue text links and animated Noto Emojis
-const renderMessageContent = (text: string) => {
+const renderMessageContent = (text: string, highlightText?: string) => {
   if (!text) return null;
 
   const URL_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
@@ -148,7 +173,7 @@ const renderMessageContent = (text: string) => {
     // No links found, just render emojis normally
     return (
       <p className="text-xs leading-relaxed font-sans select-text break-words whitespace-pre-wrap">
-        {renderEmojisOnly(text)}
+        {renderEmojisOnly(text, highlightText)}
       </p>
     );
   }
@@ -170,7 +195,7 @@ const renderMessageContent = (text: string) => {
             </a>
           );
         } else {
-          return <React.Fragment key={i}>{renderEmojisOnly(part)}</React.Fragment>;
+          return <React.Fragment key={i}>{renderEmojisOnly(part, highlightText)}</React.Fragment>;
         }
       })}
     </p>
@@ -222,6 +247,46 @@ export default function ChatWindow({
   // New optimized states
   const [showSearch, setShowSearch] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [searchMode, setSearchMode] = useState<'highlight' | 'filter'>('highlight');
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+
+  // Derive message IDs matching search query
+  const matchIds = React.useMemo(() => {
+    if (!searchText) return [];
+    return messages
+      .filter((m) => m.type === 'text' && (m.text || '').toLowerCase().includes(searchText.toLowerCase()))
+      .map((m) => m.id);
+  }, [messages, searchText]);
+
+  // Reset active search index when query changes
+  useEffect(() => {
+    setActiveSearchIndex(0);
+  }, [searchText]);
+
+  // Navigate back and forth between matching message occurrences
+  const handlePrevSearchMatch = () => {
+    if (matchIds.length === 0) return;
+    setActiveSearchIndex((prev) => (prev > 0 ? prev - 1 : matchIds.length - 1));
+  };
+
+  const handleNextSearchMatch = () => {
+    if (matchIds.length === 0) return;
+    setActiveSearchIndex((prev) => (prev < matchIds.length - 1 ? prev + 1 : 0));
+  };
+
+  // Scroll current matching message into view when focusing on it
+  const focusedMatchId = matchIds[activeSearchIndex];
+  useEffect(() => {
+    if (searchText && focusedMatchId && searchMode === 'highlight') {
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`msg-${focusedMatchId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [focusedMatchId, searchMode, searchText]);
   
   const [showMediaGrid, setShowMediaGrid] = useState(false);
   const [selectedLightboxImage, setSelectedLightboxImage] = useState<string | null>(null);
@@ -842,6 +907,14 @@ export default function ChatWindow({
         [`unreadCount.${partnerProfile.uid}`]: increment(1)
       });
       
+      // Send real background push notification (runs async so it doesn't block the UI)
+      sendPushToUser(
+        partnerProfile.uid,
+        `${myProfile.displayName} SENT A MESSAGE!`,
+        type === 'image' ? '📷 Image' : text,
+        myProfile.email
+      ).catch(err => console.error("Push dispatch error:", err));
+      
       scrollToBottom();
 
       // Trigger Orion AI if it is the recipient (should not be reached, but kept for fallback)
@@ -1140,6 +1213,13 @@ export default function ChatWindow({
       await updateDoc(doc(db, 'chats', chatId), {
         activeCall: callPayload
       });
+      // Send real background push notification for call ringing
+      sendPushToUser(
+        partnerProfile.uid,
+        `${myProfile.displayName} INCOMING CALL!`,
+        `Incoming ${type} call. Tap to join.`,
+        myProfile.email
+      ).catch(err => console.error("Call push dispatch error:", err));
     } catch (e) {
       console.error('Failed to initiate call:', e);
     }
@@ -1347,8 +1427,8 @@ export default function ChatWindow({
   };
   const isPartnerTyping = partnerProfile.uid === 'orion-ai' ? orionTyping : !!typingUsers[partnerProfile.uid];
   const headerClass = isLight 
-    ? "p-4 border-b border-slate-100 bg-white/95 backdrop-blur-md flex items-center justify-between z-10"
-    : "p-4 border-b border-slate-900 bg-[#0e121a]/80 backdrop-blur-md flex items-center justify-between z-10";
+    ? "p-3 sm:p-4 border-b border-slate-100 bg-white/95 backdrop-blur-md flex items-center justify-between z-10 flex-shrink-0"
+    : "p-3 sm:p-4 border-b border-slate-900 bg-[#0e121a]/80 backdrop-blur-md flex items-center justify-between z-10 flex-shrink-0";
     
   const headerNameClass = isLight
     ? "font-bold text-sm text-slate-800 hover:text-blue-600 transition-all truncate flex items-center gap-1"
@@ -1467,22 +1547,136 @@ export default function ChatWindow({
 
         {/* SEARCH BOX ATTACHMENT PORTAL */}
         {showSearch && (
-          <div className={`p-3 border-b flex items-center gap-2 z-10 animate-slideDown ${isLight ? 'bg-slate-100 border-slate-200' : 'bg-[#0d1017] border-slate-900'}`}>
-            <Search className="w-4 h-4 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search secure database archives..." 
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className={`flex-1 bg-transparent border-0 outline-none text-xs ${isLight ? 'text-slate-800 placeholder-slate-400' : 'text-white placeholder-slate-600'}`}
-            />
-            <button 
-              onClick={() => { setShowSearch(false); setSearchText(''); }}
-              className={`p-1 rounded-lg ${isLight ? 'hover:bg-slate-200 text-slate-500 hover:text-slate-800' : 'hover:bg-slate-800 text-slate-400 hover:text-white'}`}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className={`p-3 border-b flex flex-col md:flex-row md:items-center gap-3 z-10 flex-shrink-0 ${
+              isLight 
+                ? 'bg-slate-50/95 border-slate-200/60 shadow-sm' 
+                : 'bg-[#0b0e14]/90 border-slate-900/80 shadow-inner'
+            }`}
+          >
+            {/* Search Input Area */}
+            <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className={`flex-1 flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+                isLight 
+                  ? 'bg-white border-slate-200/85 focus-within:border-blue-500' 
+                  : 'bg-[#07090d] border-slate-800/80 focus-within:border-indigo-500'
+              }`}>
+                <Search className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                <input 
+                  type="text" 
+                  placeholder="Search secure message history..." 
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  className={`w-full bg-transparent border-0 outline-none text-xs font-sans ${
+                    isLight ? 'text-slate-800 placeholder-slate-400' : 'text-slate-100 placeholder-slate-600'
+                  }`}
+                  autoFocus
+                />
+                {searchText && (
+                  <button 
+                    onClick={() => setSearchText('')}
+                    className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full"
+                  >
+                    <X className="w-3 h-3 text-slate-500" />
+                  </button>
+                )}
+              </div>
+
+              {/* Mode Toggle Capsule */}
+              <div className={`p-1 rounded-xl flex items-center gap-1 border flex-shrink-0 self-start sm:self-auto ${
+                isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/80 border-slate-900'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => setSearchMode('highlight')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-tight uppercase transition-all ${
+                    searchMode === 'highlight'
+                      ? (isLight ? 'bg-white text-slate-800 shadow' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20')
+                      : 'text-slate-500 hover:text-slate-400'
+                  }`}
+                  title="Highlight and navigate through matches in context"
+                >
+                  Jump
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchMode('filter')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-tight uppercase transition-all ${
+                    searchMode === 'filter'
+                      ? (isLight ? 'bg-white text-slate-800 shadow' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20')
+                      : 'text-slate-500 hover:text-slate-400'
+                  }`}
+                  title="Filter the chat to show only matching messages"
+                >
+                  Filter
+                </button>
+              </div>
+            </div>
+
+            {/* Navigation and Stats controls */}
+            <div className="flex items-center justify-between md:justify-end gap-3 flex-shrink-0">
+              {searchText && (
+                <div className={`font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg flex items-center gap-1.5 ${
+                  matchIds.length > 0 
+                    ? (isLight ? 'bg-blue-50 text-blue-600' : 'bg-indigo-500/10 text-indigo-400')
+                    : (isLight ? 'bg-rose-50 text-rose-600' : 'bg-rose-500/10 text-rose-400')
+                }`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                  {matchIds.length > 0 ? (
+                    searchMode === 'highlight' ? (
+                      <span>{activeSearchIndex + 1} of {matchIds.length} matches</span>
+                    ) : (
+                      <span>{matchIds.length} matches</span>
+                    )
+                  ) : (
+                    <span>No matches</span>
+                  )}
+                </div>
+              )}
+
+              {searchMode === 'highlight' && matchIds.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handlePrevSearchMatch}
+                    className={`p-1.5 rounded-lg transition-all border ${
+                      isLight 
+                        ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600 font-bold' 
+                        : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 font-bold'
+                    }`}
+                    title="Previous match"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleNextSearchMatch}
+                    className={`p-1.5 rounded-lg transition-all border ${
+                      isLight 
+                        ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600 font-bold' 
+                        : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 font-bold'
+                    }`}
+                    title="Next match"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              <button
+                onClick={() => { setShowSearch(false); setSearchText(''); }}
+                className={`p-1.5 rounded-lg border flex items-center justify-center transition-all ${
+                  isLight 
+                    ? 'hover:bg-slate-100 border-slate-200 text-slate-400 hover:text-slate-800' 
+                    : 'hover:bg-slate-900 border-slate-800 text-slate-500 hover:text-white'
+                }`}
+                title="Exit search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
         )}
 
         {/* MESSAGES LOG VIEW */}
@@ -1493,8 +1687,8 @@ export default function ChatWindow({
         >
           {messages
             .filter((m) => {
-              if (!searchText) return true;
-              return m.text.toLowerCase().includes(searchText.toLowerCase());
+              if (!searchText || searchMode === 'highlight') return true;
+              return (m.text || '').toLowerCase().includes(searchText.toLowerCase());
             })
             .map((msg, index, arr) => {
               const isMe = msg.senderId === myProfile.uid;
@@ -1517,13 +1711,15 @@ export default function ChatWindow({
               // Only display read tick double checks if recipient read receipt config allows
               const showBlueTicks = msg.read && (partnerProfile.readReceipts !== false);
 
+              const isFocusedMatch = searchText && searchMode === 'highlight' && msg.id === matchIds[activeSearchIndex];
+
               const bubbleClass = isMe 
                 ? (isLight 
-                    ? 'bg-blue-600 text-white rounded-tr-none shadow-md shadow-blue-600/10' 
-                    : 'bg-indigo-600 text-white rounded-tr-none shadow-md shadow-indigo-600/10')
+                    ? `bg-blue-600 text-white rounded-tr-none shadow-md shadow-blue-600/10 ${isFocusedMatch ? 'ring-4 ring-amber-400 dark:ring-amber-500 scale-[1.02] shadow-2xl z-10 transition-all duration-300' : ''}` 
+                    : `bg-indigo-600 text-white rounded-tr-none shadow-md shadow-indigo-600/10 ${isFocusedMatch ? 'ring-4 ring-amber-500 dark:ring-amber-400 scale-[1.02] shadow-2xl z-10 transition-all duration-300' : ''}`)
                 : (isLight 
-                    ? 'bg-white border border-slate-200/80 text-slate-800 rounded-tl-none' 
-                    : 'bg-[#0f131c] border border-slate-900 text-slate-100 rounded-tl-none');
+                    ? `bg-white border border-slate-200/80 text-slate-800 rounded-tl-none ${isFocusedMatch ? 'ring-4 ring-blue-500 dark:ring-indigo-500 scale-[1.02] shadow-2xl z-10 transition-all duration-300' : ''}` 
+                    : `bg-[#0f131c] border border-slate-900 text-slate-100 rounded-tl-none ${isFocusedMatch ? 'ring-4 ring-indigo-500 dark:ring-indigo-400 scale-[1.02] shadow-2xl z-10 transition-all duration-300' : ''}`);
 
               return (
                 <React.Fragment key={msg.id}>
@@ -1541,7 +1737,7 @@ export default function ChatWindow({
                     </div>
                   )}
 
-                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative w-full`}>
+                  <div id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative w-full`}>
                     <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 relative ${bubbleClass}`}>
                       
                       {/* Render Sender Name above text bubbles in Group chats */}
@@ -1550,12 +1746,12 @@ export default function ChatWindow({
                       )}
 
                       {/* Standard text message */}
-                      {msg.type === 'text' && renderMessageContent(msg.text)}
+                      {msg.type === 'text' && renderMessageContent(msg.text, searchText)}
 
                       {/* Sticker image fallback */}
                       {msg.type === 'sticker' && (
                         <div className="py-1">
-                          {renderMessageContent(msg.text || '✨ [Animated Sticker]')}
+                          {renderMessageContent(msg.text || '✨ [Animated Sticker]', searchText)}
                         </div>
                       )}
 
@@ -1785,7 +1981,7 @@ export default function ChatWindow({
           </div>
         )}
 
-        <div className={`p-4 border-t backdrop-blur-md flex flex-col gap-2 z-10 ${isLight ? 'border-slate-100 bg-white/95' : 'border-slate-900 bg-[#0e121a]/60'}`}>
+        <div className={`p-2.5 sm:p-4 border-t backdrop-blur-md flex flex-col gap-2 z-10 flex-shrink-0 ${isLight ? 'border-slate-100 bg-white/95' : 'border-slate-900 bg-[#0e121a]/60'}`}>
           {partnerProfile.uid === 'oxa-llc' ? (
             <div className={`p-3 rounded-xl border flex items-center justify-center gap-3 text-center w-full select-none ${
               isLight 

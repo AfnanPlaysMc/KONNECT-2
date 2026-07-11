@@ -11,6 +11,7 @@ import Stories from './components/Stories';
 import { AppLogo } from './components/AppLogo';
 import { MessageSquare, Shield, Trophy, Film, Sparkles, RefreshCw, X, Contact } from 'lucide-react';
 import { setGoogleAccessToken } from './googleTokenStore';
+import { subscribeUserToPush } from './lib/webPush';
 
 // @ts-ignore
 import orionAiLogo from './assets/images/orion_ai_logo_1782673841547.jpg';
@@ -274,14 +275,25 @@ export default function App() {
     };
   }, [profile]);
 
-  // Request browser native notification permission automatically on load / login
+  // Request browser native notification permission and subscribe to background push automatically on load / login
   useEffect(() => {
-    if (profile && typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().catch(err => {
-          console.warn("Failed to request native notification permission automatically:", err);
-        });
-      }
+    if (profile) {
+      const initPush = async () => {
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission !== 'granted') {
+            await Notification.requestPermission().catch(err => {
+              console.warn("Failed to request native notification permission automatically:", err);
+            });
+          }
+          // Subscribe to Web Push / PWA background notifications
+          try {
+            await subscribeUserToPush(profile.uid);
+          } catch (e) {
+            console.warn("Failed to register background push subscription:", e);
+          }
+        }
+      };
+      initPush();
     }
   }, [profile]);
 
