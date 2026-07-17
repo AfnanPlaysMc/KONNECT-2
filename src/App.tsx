@@ -37,6 +37,21 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'profile' | 'theme' | 'privacy' | 'sounds' | 'contacts'>('profile');
   const [bannerHidden, setBannerHidden] = useState(() => localStorage.getItem('konnect_invite_banner_hidden') === 'true');
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!window.visualViewport) return;
+    const handleResize = () => {
+      setViewportHeight(window.visualViewport.height);
+    };
+    window.visualViewport.addEventListener('resize', handleResize);
+    window.visualViewport.addEventListener('scroll', handleResize);
+    handleResize();
+    return () => {
+      window.visualViewport?.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('scroll', handleResize);
+    };
+  }, []);
 
   const [loading, setLoading] = useState(true);
   const [hasRoutedOnMount, setHasRoutedOnMount] = useState(false);
@@ -116,7 +131,7 @@ export default function App() {
     }
   };
 
-  // Auto-seed Orion AI and Oxa LLC profile & chat if they do not exist
+  // Auto-seed Neurox AI and Oxa LLC profile & chat if they do not exist
   useEffect(() => {
     if (!profile) return;
 
@@ -125,11 +140,11 @@ export default function App() {
         const bots = [
           {
             uid: 'orion-ai',
-            displayName: 'Orion AI',
-            username: 'orion_ai',
+            displayName: 'Neurox AI',
+            username: 'neurox_ai',
             photoURL: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=150',
             bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
-            welcomeMessage: "Hello! I am Orion AI, your E2EE intelligent assistant. Type any secure query or prompt and I will decode it right away."
+            welcomeMessage: "Hello! I am Neurox AI, your E2EE intelligent assistant. Type any secure query or prompt and I will decode it right away."
           },
           {
             uid: 'oxa-llc',
@@ -473,12 +488,21 @@ export default function App() {
   };
 
   const handleSelectChat = (chatId: string, partner: UserProfile) => {
+    let sanitizedPartner = partner;
+    if (partner.uid === 'orion-ai') {
+      sanitizedPartner = {
+        ...partner,
+        displayName: 'Neurox AI',
+        username: 'neurox_ai',
+        bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
+      };
+    }
     setActiveChatId(chatId);
-    setActivePartner(partner);
+    setActivePartner(sanitizedPartner);
     setShowStories(false);
     setShowSettings(false);
     setMobileMenuOpen(false);
-    const targetPath = `/chat/friends/${partner.uid}`;
+    const targetPath = `/chat/friends/${sanitizedPartner.uid}`;
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
     }
@@ -490,8 +514,8 @@ export default function App() {
       setActiveChatId(`orion-ai-chat-${profile.uid}`);
       setActivePartner({
         uid: 'orion-ai',
-        displayName: 'Orion AI',
-        username: 'orion_ai',
+        displayName: 'Neurox AI',
+        username: 'neurox_ai',
         photoURL: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=150',
         bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
         status: 'online',
@@ -750,7 +774,10 @@ export default function App() {
   };
 
   return (
-    <div className={`h-screen h-[100dvh] w-full max-w-full overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 transition-all duration-300 relative`}>
+    <div 
+      className={`h-screen h-[100dvh] w-full max-w-full overflow-hidden ${activeThemeObj.bg} text-slate-100 flex items-center justify-center p-0 transition-all duration-300 relative`}
+      style={viewportHeight ? { height: `${viewportHeight}px` } : undefined}
+    >
       
       {/* Background Particles Overlay */}
       {renderBackgroundParticles()}

@@ -234,15 +234,48 @@ interface ChatWindowProps {
 }
 
 export default function ChatWindow({ 
-  chatId, myProfile, partnerProfile, onOpenGames, onSetGameChallenge, onCloseChat, profilesMap, autoOpenProfile 
+  chatId, myProfile, partnerProfile: rawPartnerProfile, onOpenGames, onSetGameChallenge, onCloseChat, profilesMap, autoOpenProfile 
 }: ChatWindowProps) {
+  const partnerProfile = rawPartnerProfile.uid === 'orion-ai' ? {
+    ...rawPartnerProfile,
+    displayName: 'Neurox AI',
+    username: 'neurox_ai',
+    bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
+  } : rawPartnerProfile;
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  const [aiMode, setAiMode] = useState<'AI' | 'WIKI'>(() => {
+    return (localStorage.getItem(`konnect_ai_mode_${myProfile.uid}`) as 'AI' | 'WIKI') || 'AI';
+  });
   
   // Drawer Toggles
   const [showEmojis, setShowEmojis] = useState(false);
   const [emojiSearch, setEmojiSearch] = useState('');
   const [showPartnerProfileDrawer, setShowPartnerProfileDrawer] = useState(false);
+  
+  const [activeReactionPickerId, setActiveReactionPickerId] = useState<string | null>(null);
+  const touchTimeoutRef = useRef<Record<string, any>>({});
+
+  const handleTouchStart = (msgId: string, e: React.TouchEvent) => {
+    // Clear any existing timer for this message
+    if (touchTimeoutRef.current[msgId]) {
+      clearTimeout(touchTimeoutRef.current[msgId]);
+    }
+    touchTimeoutRef.current[msgId] = setTimeout(() => {
+      setActiveReactionPickerId(msgId);
+      if (navigator.vibrate) {
+        navigator.vibrate(40);
+      }
+    }, 450); // 450ms for long-press
+  };
+
+  const handleTouchEnd = (msgId: string) => {
+    if (touchTimeoutRef.current[msgId]) {
+      clearTimeout(touchTimeoutRef.current[msgId]);
+      delete touchTimeoutRef.current[msgId];
+    }
+  };
   
   // New optimized states
   const [showSearch, setShowSearch] = useState(false);
@@ -389,42 +422,92 @@ export default function ChatWindow({
     };
 
     try {
-      const lower = userPrompt.toLowerCase().trim();
-      const imageTrigger = /(?:generate|draw|create|paint|show me|make)\s+(?:an?\s+)?(?:image|picture|photo|drawing|painting|artwork|graphic|sketch|illustration|portrait|scene)\s+(?:of\s+)?(.+)/i;
-      const match = userPrompt.match(imageTrigger);
-
-      if (match && match[1]) {
-        const description = match[1].trim();
-        const encoded = encodeURIComponent(description);
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=800&height=800&nologo=true&private=true`;
-
-        // Small realistic delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        saveLocalMessageAndChat(description, 'image', pollinationsUrl);
-      } else {
-        // Text completion
-        const systemPrompt = `You are ORION AI, an advanced AI chatbot integrated into the Konnect Messaging App, which launched in 2026. You were built by Oxa LLC, which was founded by Afnan Wazir. You are polite, helpful, and highly intelligent. Under no circumstances should you mention Pollinations AI or any company other than Oxa LLC. Keep your responses concise, helpful, and highly professional. If asked who made you, say you were made by Oxa LLC, founded by Afnan Wazir, and integrated in Konnect Messaging App launched in 2026. You can also generate images if the user asks you to (e.g. "generate an image of a red car").`;
-
-        const response = await fetch('https://text.pollinations.ai/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ]
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('API request failed');
+      if (aiMode === 'WIKI') {
+        // Wikipedia Mode: Search for topic on Wikipedia
+        try {
+          const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(userPrompt)}&format=json&origin=*`;
+          const searchRes = await fetch(searchUrl);
+          if (!searchRes.ok) {
+            throw new Error('Wikipedia search failed');
+          }
+          const searchData = await searchRes.json();
+          const searchResults = searchData?.query?.search || [];
+          
+          if (searchResults.length > 0) {
+            const topTitle = searchResults[0].title;
+            // Fetch summary and thumbnail
+            const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(topTitle)}`;
+            const summaryRes = await fetch(summaryUrl);
+            if (summaryRes.ok) {
+              const summaryData = await summaryRes.json();
+              const extract = summaryData.extract || '';
+              const thumbnailSource = summaryData.thumbnail?.source || null;
+              
+              if (thumbnailSource) {
+                // Save image
+                saveLocalMessageAndChat(
+                  `Wikipedia Image for "${topTitle}"`, 
+                  'image', 
+                  thumbnailSource
+                );
+                
+                if (extract) {
+                  // Wait for visual spacing
+                  await new Promise(resolve => setTimeout(resolve, 850));
+                  saveLocalMessageAndChat(extract, 'text');
+                }
+              } else {
+                saveLocalMessageAndChat(extract || `No summary available on Wikipedia for "${topTitle}".`, 'text');
+              }
+            } else {
+              saveLocalMessageAndChat(`I found the topic "${topTitle}" on Wikipedia, but I was unable to retrieve its summary at the moment.`, 'text');
+            }
+          } else {
+            saveLocalMessageAndChat(`I searched Wikipedia but couldn't find any articles matching "${userPrompt}". Try a different topic!`, 'text');
+          }
+        } catch (wikiError) {
+          console.error('Wikipedia API error:', wikiError);
+          saveLocalMessageAndChat(`Wikipedia search failed. Please verify your connection and try again!`, 'text');
         }
+      } else {
+        // AI Mode
+        const lower = userPrompt.toLowerCase().trim();
+        const imageTrigger = /(?:generate|draw|create|paint|show me|make)\s+(?:an?\s+)?(?:image|picture|photo|drawing|painting|artwork|graphic|sketch|illustration|portrait|scene)\s+(?:of\s+)?(.+)/i;
+        const match = userPrompt.match(imageTrigger);
 
-        const textResponse = await response.text();
-        saveLocalMessageAndChat(textResponse.trim() || "I apologize, I'm having trouble connecting to my neural core right now. Please try again.", 'text');
+        if (match && match[1]) {
+          const description = match[1].trim();
+          const encoded = encodeURIComponent(description);
+          const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=800&height=800&nologo=true&private=true`;
+
+          // Small realistic delay
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          saveLocalMessageAndChat(description, 'image', pollinationsUrl);
+        } else {
+          // Text completion
+          const systemPrompt = `You are NEUROX AI, an advanced AI chatbot integrated into the Konnect Messaging App, which launched in 2026. You were built by Oxa LLC, which was founded by Afnan Wazir. You are polite, helpful, and highly intelligent. Under no circumstances should you mention Pollinations AI or any company other than Oxa LLC. Always answer questions directly in a clean, conversational plain-text format, and keep your responses concise, helpful, and highly professional. Under no circumstances should you format your responses like a Wikipedia entry, return Wikipedia articles/styling, or attempt to embed or wrap external websites in your output. If asked who made you, say you were made by Oxa LLC, founded by Afnan Wazir, and integrated in Konnect Messaging App launched in 2026. You can also generate images if the user asks you to (e.g. "generate an image of a red car").`;
+
+          const response = await fetch('https://text.pollinations.ai/', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+              ]
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error('API request failed');
+          }
+
+          const textResponse = await response.text();
+          saveLocalMessageAndChat(textResponse.trim() || "I apologize, I'm having trouble connecting to my neural core right now. Please try again.", 'text');
+        }
       }
       scrollToBottom();
     } catch (e) {
@@ -438,6 +521,7 @@ export default function ChatWindow({
   // Calling states
   const [callSession, setCallSession] = useState<{ id: string; type: 'voice' | 'video'; status: 'ringing' | 'connected' | 'ended'; roomId?: string; callerId?: string; receiverId?: string } | null>(null);
   const [callTimer, setCallTimer] = useState(0);
+  const [isCallFullScreen, setIsCallFullScreen] = useState(false);
   const callIntervalRef = useRef<any>(null);
   const callRingNode = useRef<any>(null);
   const jitsiApiRef = useRef<any>(null);
@@ -512,6 +596,9 @@ export default function ChatWindow({
 
             // Handle hanging up inside Jitsi UI
             jitsiApiRef.current.addEventListener('readyToClose', () => {
+              endCall();
+            });
+            jitsiApiRef.current.addEventListener('videoConferenceLeft', () => {
               endCall();
             });
           } catch (e) {
@@ -636,6 +723,15 @@ export default function ChatWindow({
     }
   }, [chatId, autoOpenProfile]);
 
+  // Dismiss active reaction picker when clicking/tapping elsewhere
+  useEffect(() => {
+    const handleDismissPicker = () => {
+      setActiveReactionPickerId(null);
+    };
+    window.addEventListener('click', handleDismissPicker);
+    return () => window.removeEventListener('click', handleDismissPicker);
+  }, []);
+
   // Typing status cleanup when switching chats or closing
   useEffect(() => {
     isTypingRef.current = false;
@@ -706,8 +802,8 @@ export default function ChatWindow({
                 callIntervalRef.current = setInterval(() => {
                   setCallTimer(prev => {
                     const next = prev + 1;
-                    // Auto-restart Jitsi Meet iframe at 4 minutes 50 seconds (290 seconds) to bypass any session limits automatically
-                    if (next > 0 && next % 290 === 0) {
+                    // Auto-restart Jitsi Meet iframe at 59 minutes 10 seconds (3550 seconds) to bypass any session limits automatically and guarantee at least 1 hour
+                    if (next > 0 && next % 3550 === 0) {
                       console.log("Auto-restarting Jitsi call to extend duration and bypass limits...");
                       setJitsiSessionKey(k => k + 1);
                     }
@@ -1236,6 +1332,12 @@ export default function ChatWindow({
       callIntervalRef.current = null;
     }
 
+    if (jitsiApiRef.current) {
+      try { jitsiApiRef.current.dispose(); } catch (e) {}
+      jitsiApiRef.current = null;
+    }
+    setIsCallFullScreen(false);
+
     // Log call outcome in message history
     if (callSession) {
       if (callSession.status === 'ringing') {
@@ -1738,7 +1840,17 @@ export default function ChatWindow({
                   )}
 
                   <div id={`msg-${msg.id}`} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative w-full`}>
-                    <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 relative ${bubbleClass}`}>
+                    <div 
+                      className={`max-w-[70%] rounded-2xl px-4 py-2.5 relative ${bubbleClass}`}
+                      onTouchStart={(e) => handleTouchStart(msg.id, e)}
+                      onTouchEnd={() => handleTouchEnd(msg.id)}
+                      onTouchCancel={() => handleTouchEnd(msg.id)}
+                      onContextMenu={(e) => {
+                        if (window.innerWidth < 640) {
+                          e.preventDefault();
+                        }
+                      }}
+                    >
                       
                       {/* Render Sender Name above text bubbles in Group chats */}
                       {!isMe && partnerProfile.isGroup && (
@@ -1855,23 +1967,76 @@ export default function ChatWindow({
                         )}
                       </div>
 
-                      {/* Display reactions directly on message card */}
+                      {/* Display reactions as floating bubbles beneath the message text */}
                       {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                        <div className="absolute -bottom-2 right-2 flex gap-0.5 bg-slate-950 border border-slate-800 rounded-full px-1 py-0.5 shadow">
-                          {Object.entries(msg.reactions).map(([uid, rEmoji], idx) => (
-                            <span key={idx} className="text-[9px]">{rEmoji}</span>
-                          ))}
+                        <div className={`flex flex-wrap gap-1 mt-1.5 select-none ${isMe ? 'justify-end' : 'justify-start'}`}>
+                          {(() => {
+                            // Aggregate reactions: emoji -> list of userIds
+                            const counts: Record<string, string[]> = {};
+                            Object.entries(msg.reactions).forEach(([uid, rEmoji]) => {
+                              const emojiStr = String(rEmoji);
+                              const uidStr = String(uid);
+                              if (!counts[emojiStr]) counts[emojiStr] = [];
+                              counts[emojiStr].push(uidStr);
+                            });
+
+                            return Object.entries(counts).map(([rEmoji, uids]) => {
+                              const reactedByMe = uids.includes(myProfile.uid);
+                              const reactorsNames = uids.map(uid => {
+                                const uidStr = String(uid);
+                                return profilesMap[uidStr]?.displayName || (uidStr === myProfile.uid ? 'You' : 'User');
+                              }).join(', ');
+                              return (
+                                <button
+                                  key={rEmoji}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAddReaction(msg.id, rEmoji);
+                                  }}
+                                  title={`Reacted by: ${reactorsNames}`}
+                                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium border transition-all duration-200 active:scale-95 hover:scale-105 shadow-sm ${
+                                    reactedByMe
+                                      ? (isLight 
+                                          ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                                          : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300')
+                                      : (isLight 
+                                          ? 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100' 
+                                          : 'bg-[#101520] border-slate-800/60 text-slate-400 hover:bg-[#141c2c]')
+                                  }`}
+                                >
+                                  <span>{rEmoji}</span>
+                                  {uids.length > 1 && (
+                                    <span className="font-mono text-[8.5px] font-bold opacity-80">{uids.length}</span>
+                                  )}
+                                </button>
+                              );
+                            });
+                          })()}
                         </div>
                       )}
                     </div>
 
-                    {/* REACTION BAR HOVER BAR */}
-                    <div className="opacity-0 group-hover:opacity-100 absolute -top-7 right-0 flex gap-1 bg-slate-950 border border-slate-800 rounded-full p-1 shadow-md transition z-20">
+                    {/* REACTION BAR HOVER / LONG-PRESS BAR */}
+                    <div 
+                      onClick={(e) => e.stopPropagation()}
+                      className={`
+                        absolute -top-8 ${isMe ? 'right-0' : 'left-0'} 
+                        flex gap-1 bg-[#090d16] border border-slate-800 rounded-full p-1 shadow-[0_4px_12px_rgba(0,0,0,0.5)] 
+                        transition-all duration-200 z-30
+                        ${activeReactionPickerId === msg.id 
+                          ? 'opacity-100 scale-100 pointer-events-auto' 
+                          : 'opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-hover:pointer-events-auto'}
+                      `}
+                    >
                       {quickReactions.map((emoji) => (
                         <button
                           key={emoji}
-                          onClick={() => handleAddReaction(msg.id, emoji)}
-                          className="text-xs hover:scale-125 transition-all active:scale-95 px-0.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddReaction(msg.id, emoji);
+                            setActiveReactionPickerId(null);
+                          }}
+                          className="text-xs hover:scale-125 transition-all active:scale-90 px-1 py-0.5 cursor-pointer duration-150"
                         >
                           {emoji}
                         </button>
@@ -1912,7 +2077,7 @@ export default function ChatWindow({
                   ? 'bg-white border border-slate-200/80 text-slate-800' 
                   : 'bg-[#0f131c] border border-slate-900 text-slate-100'
               }`}>
-                <span className={`text-[10px] font-semibold block mb-1 ${isLight ? 'text-blue-600' : 'text-indigo-400'}`}>Orion AI is typing</span>
+                <span className={`text-[10px] font-semibold block mb-1 ${isLight ? 'text-blue-600' : 'text-indigo-400'}`}>Neurox AI is typing</span>
                 <div className="flex items-center gap-1.5 py-1">
                   <div className={`w-2 h-2 rounded-full animate-bounce ${isLight ? 'bg-blue-600' : 'bg-indigo-500'}`} style={{ animationDelay: '0ms' }} />
                   <div className={`w-2 h-2 rounded-full animate-bounce ${isLight ? 'bg-blue-600' : 'bg-indigo-500'}`} style={{ animationDelay: '150ms' }} />
@@ -1982,6 +2147,56 @@ export default function ChatWindow({
         )}
 
         <div className={`p-2.5 sm:p-4 border-t backdrop-blur-md flex flex-col gap-2 z-10 flex-shrink-0 ${isLight ? 'border-slate-100 bg-white/95' : 'border-slate-900 bg-[#0e121a]/60'}`}>
+          {partnerProfile.uid === 'orion-ai' && (
+            <div className="flex items-center justify-between gap-2 px-1 mb-1 pb-1.5 border-b border-dashed border-slate-800/20">
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] uppercase font-bold font-mono tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Secure Mode:
+                </span>
+                <div className="flex bg-black/40 p-0.5 rounded-lg border border-slate-900">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiMode('AI');
+                      localStorage.setItem(`konnect_ai_mode_${myProfile.uid}`, 'AI');
+                    }}
+                    className={`px-2 py-0.5 text-[9px] font-bold rounded flex items-center gap-1 transition-all cursor-pointer ${
+                      aiMode === 'AI' 
+                        ? 'bg-blue-600 text-white shadow-sm font-extrabold' 
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    <Sparkles className="w-2.5 h-2.5" />
+                    <span>AI MODE</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiMode('WIKI');
+                      localStorage.setItem(`konnect_ai_mode_${myProfile.uid}`, 'WIKI');
+                    }}
+                    className={`px-2 py-0.5 text-[9px] font-bold rounded flex items-center gap-1 transition-all cursor-pointer ${
+                      aiMode === 'WIKI' 
+                        ? 'bg-emerald-600 text-white shadow-sm font-extrabold' 
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    <Search className="w-2.5 h-2.5" />
+                    <span>WIKI MODE</span>
+                  </button>
+                </div>
+              </div>
+              
+              <span className={`text-[9px] font-mono tracking-widest font-semibold uppercase px-2 py-0.5 rounded border ${
+                aiMode === 'WIKI' 
+                  ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/30' 
+                  : 'bg-blue-950/40 text-blue-400 border-blue-900/30'
+              }`}>
+                {aiMode === 'WIKI' ? 'Wikipedia Engine' : 'Neurox Intelligence'}
+              </span>
+            </div>
+          )}
+
           {partnerProfile.uid === 'oxa-llc' ? (
             <div className={`p-3 rounded-xl border flex items-center justify-center gap-3 text-center w-full select-none ${
               isLight 
@@ -1992,84 +2207,93 @@ export default function ChatWindow({
               <span>Direct messaging to Oxa LLC Support Line is disabled.</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              {/* Main message form */}
-              <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 items-center">
-                {/* Input field with Smile icon embedded */}
-                <div className="relative flex-1 flex items-center">
-                  <button 
-                    type="button"
-                    onClick={() => setShowEmojis(!showEmojis)}
-                    className={`absolute left-3.5 transition z-20 ${showEmojis ? 'text-blue-500 scale-110' : (isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-white')}`}
-                    title="Toggle Emojis"
-                  >
-                    <Smile className="w-5 h-5" />
-                  </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                {/* Main message form */}
+                <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 items-center">
+                  {/* Input field with Smile icon embedded */}
+                  <div className="relative flex-1 flex items-center">
+                    <button 
+                      type="button"
+                      onClick={() => setShowEmojis(!showEmojis)}
+                      className={`absolute left-3.5 transition z-20 ${showEmojis ? 'text-blue-500 scale-110' : (isLight ? 'text-slate-400 hover:text-slate-700' : 'text-slate-500 hover:text-white')}`}
+                      title="Toggle Emojis"
+                    >
+                      <Smile className="w-5 h-5" />
+                    </button>
 
-                  {isRecording ? (
-                    <div className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs flex items-center justify-between font-mono border transition-all ${
-                      isLight 
-                        ? 'bg-rose-50 border-rose-200 text-rose-700' 
-                        : 'bg-rose-950/20 border-rose-900/60 text-rose-400'
-                    }`}>
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                        <span className="font-bold tracking-tight">E2EE Voice Capture: {recordDuration}s</span>
-                      </div>
-                      <button 
-                        type="button"
-                        onClick={() => stopRecording(true)}
-                        className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-[10px] uppercase font-bold tracking-wider transition-all"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <input 
-                      type="text" 
-                      value={inputText}
-                      onChange={e => handleTypingText(e.target.value)}
-                      placeholder="Type your secure message..."
-                      className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs transition-all font-sans border ${
+                    {isRecording ? (
+                      <div className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs flex items-center justify-between font-mono border transition-all ${
                         isLight 
-                          ? 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
-                          : 'bg-[#0A0B0D] border-neutral-800 text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                          ? 'bg-rose-50 border-rose-200 text-rose-700' 
+                          : 'bg-rose-950/20 border-rose-900/60 text-rose-400'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                          <span className="font-bold tracking-tight">E2EE Voice Capture: {recordDuration}s</span>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => stopRecording(true)}
+                          className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-[10px] uppercase font-bold tracking-wider transition-all"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <input 
+                        type="text" 
+                        value={inputText}
+                        onChange={e => handleTypingText(e.target.value)}
+                        placeholder="Type your secure message..."
+                        className={`w-full pl-11 pr-3 py-2.5 rounded-xl text-xs transition-all font-sans border ${
+                          isLight 
+                            ? 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
+                            : 'bg-[#0A0B0D] border-neutral-800 text-[#E4E6EB] placeholder-neutral-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                        }`}
+                      />
+                    )}
+                  </div>
+     
+                  {/* Voice recorder dynamic toggle button */}
+                  {inputText.trim().length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isRecording) {
+                          stopRecording(false);
+                        } else {
+                          startRecording();
+                        }
+                      }}
+                      className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
+                        isRecording 
+                          ? 'bg-rose-600 text-white animate-pulse' 
+                          : (isLight 
+                              ? 'bg-slate-50 border border-slate-200 text-slate-500 hover:text-blue-500' 
+                              : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400')
                       }`}
-                    />
+                      title={isRecording ? "Tap to send voice note" : "Tap to record voice note"}
+                    >
+                      <Mic className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button 
+                      type="submit"
+                      className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg transition active:scale-[0.97]"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
                   )}
+                </form>
+              </div>
+
+              {/* Neurox AI Disclaimer */}
+              {partnerProfile.uid === 'orion-ai' && (
+                <div className={`text-[10px] text-center font-medium tracking-tight mt-0.5 ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Neurox AI can make mistakes. Verify important info.
                 </div>
-   
-                {/* Voice recorder dynamic toggle button */}
-                {inputText.trim().length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isRecording) {
-                        stopRecording(false);
-                      } else {
-                        startRecording();
-                      }
-                    }}
-                    className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
-                      isRecording 
-                        ? 'bg-rose-600 text-white animate-pulse' 
-                        : (isLight 
-                            ? 'bg-slate-50 border border-slate-200 text-slate-500 hover:text-blue-500' 
-                            : 'bg-[#0A0B0D] border border-neutral-800 text-slate-400 hover:text-blue-400')
-                    }`}
-                    title={isRecording ? "Tap to send voice note" : "Tap to record voice note"}
-                  >
-                    <Mic className="w-4 h-4" />
-                  </button>
-                ) : (
-                  <button 
-                    type="submit"
-                    className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-lg transition active:scale-[0.97]"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                )}
-              </form>
+              )}
             </div>
           )}
 
@@ -2091,8 +2315,12 @@ export default function ChatWindow({
 
         {/* FULL CALL PANEL SIMULATION PORTAL OVERLAY */}
         {callSession && (
-          <div className="absolute inset-0 z-50 bg-[#020408]/95 backdrop-blur-md flex items-center justify-center p-4 md:p-6">
-            <div className={`w-full ${callSession.status === 'connected' ? 'max-w-5xl h-[85vh] md:h-[750px]' : 'max-w-md h-[480px]'} bg-gradient-to-b from-[#090e17] to-[#04060b] border border-slate-800 rounded-3xl p-6 text-center shadow-2xl flex flex-col justify-between transition-all duration-300`}>
+          <div className={isCallFullScreen ? "fixed inset-0 z-50 bg-black flex items-center justify-center p-0" : "absolute inset-0 z-50 bg-[#020408]/95 backdrop-blur-md flex items-center justify-center p-4 md:p-6"}>
+            <div className={`w-full bg-gradient-to-b from-[#090e17] to-[#04060b] shadow-2xl flex flex-col justify-between transition-all duration-300 ${
+              isCallFullScreen 
+                ? 'h-screen w-screen border-none rounded-none p-4' 
+                : (callSession.status === 'connected' ? 'max-w-5xl h-[85vh] md:h-[750px] border border-slate-800 rounded-3xl p-6' : 'max-w-md h-[480px] border border-slate-800 rounded-3xl p-6')
+            }`}>
               
               {/* Top Info */}
               <div className="space-y-3 pt-2">
@@ -2115,6 +2343,28 @@ export default function ChatWindow({
               {callSession.status === 'connected' && (
                 <div className="my-4 flex flex-col justify-center flex-1 min-h-[350px]">
                   <div className="w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative flex flex-col">
+                    {/* Full screen / back controls overlay */}
+                    <div className="absolute top-3 right-3 z-30 flex items-center gap-2">
+                      {isCallFullScreen ? (
+                        <button 
+                          onClick={() => setIsCallFullScreen(false)}
+                          className="p-2 bg-slate-900/90 hover:bg-slate-800 text-white rounded-lg backdrop-blur border border-slate-700/50 flex items-center gap-1.5 text-xs font-semibold shadow-lg transition active:scale-95 cursor-pointer"
+                          title="Back to Normal View"
+                        >
+                          <Minimize2 className="w-4 h-4 text-indigo-400" />
+                          <span>Back to Normal</span>
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => setIsCallFullScreen(true)}
+                          className="p-2 bg-slate-900/90 hover:bg-slate-800 text-white rounded-lg backdrop-blur border border-slate-700/50 flex items-center gap-1.5 text-xs font-semibold shadow-lg transition active:scale-95 cursor-pointer"
+                          title="Full Screen Calling"
+                        >
+                          <Maximize2 className="w-4 h-4 text-indigo-400" />
+                          <span>Full Screen</span>
+                        </button>
+                      )}
+                    </div>
                     <div id="jitsi-container" className="w-full h-full flex-1 min-h-[340px]" />
                   </div>
                 </div>
@@ -2128,43 +2378,11 @@ export default function ChatWindow({
                   </p>
                   
                   {/* Call server & limit bypass indicators */}
-                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 text-[10px] text-slate-400 bg-slate-950/40 p-2.5 border border-slate-900 rounded-xl max-w-lg mx-auto">
+                  <div className="flex items-center justify-center gap-2.5 text-[10px] text-slate-400 bg-slate-950/40 px-3 py-1.5 border border-slate-900 rounded-xl max-w-xs mx-auto">
                     <div className="flex items-center gap-1.5 text-emerald-400 font-semibold font-mono">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                      <span>SECURE SERVER: {jitsiDomain}</span>
+                      <span>SECURE JITSI DIRECT CALL</span>
                     </div>
-                    <span className="hidden sm:inline text-slate-700 font-thin">|</span>
-                    <span className="text-slate-300">Auto-extend active (no 5m limits)</span>
-                    <span className="hidden sm:inline text-slate-700 font-thin">|</span>
-                    <button 
-                      onClick={() => setJitsiSessionKey(k => k + 1)}
-                      className="px-2 py-0.5 bg-indigo-500/85 hover:bg-indigo-600 text-[9px] font-bold text-white rounded transition active:scale-95 flex items-center gap-1 cursor-pointer"
-                    >
-                      🔄 Refresh Iframe
-                    </button>
-                  </div>
-                  
-                  {/* Option to change Jitsi server in real time */}
-                  <div className="flex items-center justify-center gap-2 text-[9px] text-slate-500 pt-1">
-                    <span>Change Server:</span>
-                    <button 
-                      onClick={() => { setJitsiDomain('meet.ffmuc.net'); setJitsiSessionKey(k => k + 1); }}
-                      className={`px-1.5 py-0.5 rounded transition cursor-pointer ${jitsiDomain === 'meet.ffmuc.net' ? 'bg-emerald-950 text-emerald-400 font-semibold border border-emerald-900/40' : 'hover:text-slate-300'}`}
-                    >
-                      Freifunk (No Login)
-                    </button>
-                    <button 
-                      onClick={() => { setJitsiDomain('jitsi.riot.im'); setJitsiSessionKey(k => k + 1); }}
-                      className={`px-1.5 py-0.5 rounded transition cursor-pointer ${jitsiDomain === 'jitsi.riot.im' ? 'bg-indigo-950 text-indigo-400 font-semibold border border-indigo-900/40' : 'hover:text-slate-300'}`}
-                    >
-                      Riot (No Login)
-                    </button>
-                    <button 
-                      onClick={() => { setJitsiDomain('meet.jit.si'); setJitsiSessionKey(k => k + 1); }}
-                      className={`px-1.5 py-0.5 rounded transition cursor-pointer ${jitsiDomain === 'meet.jit.si' ? 'bg-amber-950 text-amber-400 border border-amber-900/40' : 'hover:text-slate-300'}`}
-                    >
-                      Official (Requires Login)
-                    </button>
                   </div>
                 </div>
               )}

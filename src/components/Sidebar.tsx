@@ -286,8 +286,8 @@ export default function Sidebar({
             id: parsed.id || `orion-ai-chat-${profile.uid}`,
             partner: {
               uid: 'orion-ai',
-              displayName: 'Orion AI',
-              username: 'orion_ai',
+              displayName: 'Neurox AI',
+              username: 'neurox_ai',
               photoURL: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=150',
               bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
               status: 'online',
@@ -309,15 +309,15 @@ export default function Sidebar({
           id: `orion-ai-chat-${profile.uid}`,
           partner: {
             uid: 'orion-ai',
-            displayName: 'Orion AI',
-            username: 'orion_ai',
+            displayName: 'Neurox AI',
+            username: 'neurox_ai',
             photoURL: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=150',
             bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
             status: 'online',
             theme: 'deep-dark'
           },
           lastMessage: {
-            text: "Hello! I am Orion AI, your E2EE intelligent assistant. Type any secure query or prompt and I will decode it right away.",
+            text: "Hello! I am Neurox AI, your E2EE intelligent assistant. Type any secure query or prompt and I will decode it right away.",
             timestamp: new Date(),
             senderId: 'orion-ai'
           },
@@ -528,7 +528,15 @@ export default function Sidebar({
 
   // Map chats with real-time profile data
   const mappedChats = chats.map(c => {
-    const partnerProfile = realtimeProfiles[c.partner.uid] || c.partner;
+    let partnerProfile = realtimeProfiles[c.partner.uid] || c.partner;
+    if (partnerProfile.uid === 'orion-ai') {
+      partnerProfile = {
+        ...partnerProfile,
+        displayName: 'Neurox AI',
+        username: 'neurox_ai',
+        bio: 'Your secure, intelligent AI companion for high-density end-to-end encrypted intelligence.',
+      };
+    }
     const isBot = partnerProfile.uid === 'orion-ai' || partnerProfile.uid === 'oxa-llc';
     const isOnline = isBot || (partnerProfile.status === 'online' && !partnerProfile.stealthMode);
     
@@ -713,6 +721,10 @@ export default function Sidebar({
             if (u.uid === profile.uid || u.uid === 'orion-ai' || u.uid === 'oxa-llc') return false;
             if (u.status !== 'online' || u.stealthMode) return false;
             
+            // Show only friends (users we have a direct non-group chat with)
+            const isFriend = chats.some(c => !c.partner.isGroup && c.partner.uid === u.uid);
+            if (!isFriend) return false;
+
             // Real-time heartbeat: must have been active within last 3 minutes (180,000ms)
             if (u.lastSeen) {
               try {
