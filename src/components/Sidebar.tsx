@@ -34,6 +34,7 @@ interface SidebarProps {
   onOpenSports: () => void;
   onOpenMobileMenu?: () => void;
   onOpenChatWithFriend?: (friendUid: string) => void;
+  onLogoClick?: () => void;
 }
 
 const getAnimatedEmojiUrl = (emoji: string) => {
@@ -86,7 +87,7 @@ const renderMessageTextWithEmojis = (text: string) => {
 };
 
 export default function Sidebar({ 
-  profile, activeChatId, onSelectChat, onOpenSettings, onOpenContacts, onOpenStories, onOpenSports, onOpenMobileMenu, onOpenChatWithFriend 
+  profile, activeChatId, onSelectChat, onOpenSettings, onOpenContacts, onOpenStories, onOpenSports, onOpenMobileMenu, onOpenChatWithFriend, onLogoClick 
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [chats, setChats] = useState<{ id: string; partner: UserProfile; lastMessage?: any; unread?: number }[]>([]);
@@ -325,6 +326,56 @@ export default function Sidebar({
         };
       }
 
+      // Load local Oxa LLC chat
+      const localOxaChatKey = `konnect_local_chat_oxa-llc_${profile.uid}`;
+      const storedLocalOxa = localStorage.getItem(localOxaChatKey);
+      let localOxaChat: any = null;
+      if (storedLocalOxa) {
+        try {
+          const parsed = JSON.parse(storedLocalOxa);
+          localOxaChat = {
+            id: parsed.id || `oxa-llc-chat-${profile.uid}`,
+            partner: {
+              uid: 'oxa-llc',
+              displayName: 'Oxa LLC',
+              username: 'oxa_llc',
+              photoURL: 'https://images.unsplash.com/photo-1634973357973-f2ed255753e1?w=150',
+              bio: 'Official developers of the Konnect secure suite. Contact us for security audits or premium features.',
+              status: 'online',
+              theme: 'deep-dark'
+            },
+            lastMessage: parsed.lastMessage ? {
+              ...parsed.lastMessage,
+              timestamp: parsed.lastMessage.timestamp ? new Date(parsed.lastMessage.timestamp) : new Date()
+            } : null,
+            unread: parsed.unreadCount?.[profile.uid] || 0
+          };
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (!localOxaChat) {
+        localOxaChat = {
+          id: `oxa-llc-chat-${profile.uid}`,
+          partner: {
+            uid: 'oxa-llc',
+            displayName: 'Oxa LLC',
+            username: 'oxa_llc',
+            photoURL: 'https://images.unsplash.com/photo-1634973357973-f2ed255753e1?w=150',
+            bio: 'Official developers of the Konnect secure suite. Contact us for security audits or premium features.',
+            status: 'online',
+            theme: 'deep-dark'
+          },
+          lastMessage: {
+            text: "Welcome to Konnect! We are Oxa LLC, the development team behind this secure messaging platform. Feel free to explore our settings, premium features, and arcade. Let us know if you find any security bugs!",
+            timestamp: new Date(),
+            senderId: 'oxa-llc'
+          },
+          unread: 0
+        };
+      }
+
       const getTimestampValue = (chat: any) => {
         const ts = chat.lastMessage?.timestamp;
         if (!ts) return 0;
@@ -346,8 +397,8 @@ export default function Sidebar({
         return 0;
       };
 
-      const filteredChats = chatsList.filter((c) => c.partner.uid !== 'orion-ai');
-      const allChats = [localOrionChat, ...filteredChats];
+      const filteredChats = chatsList.filter((c) => c.partner.uid !== 'orion-ai' && c.partner.uid !== 'oxa-llc');
+      const allChats = [localOrionChat, localOxaChat, ...filteredChats];
       
       // Sort chats so that the most recently used (latest message timestamp) is on top
       allChats.sort((a, b) => getTimestampValue(b) - getTimestampValue(a));
@@ -605,9 +656,13 @@ export default function Sidebar({
           </button>
 
           {/* APP LOGO */}
-          <div className="p-1.5 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
+          <button 
+            onClick={onLogoClick}
+            className="p-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer"
+            title="Return to Dashboard"
+          >
             <AppLogo className="w-5 h-5 text-white" />
-          </div>
+          </button>
 
           {/* VERTICAL SEPARATOR LINE */}
           <div className={`h-8 w-[1px] ${isLight ? 'bg-slate-200' : 'bg-white/10'} mx-3 flex-shrink-0`} />

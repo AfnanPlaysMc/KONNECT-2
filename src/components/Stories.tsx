@@ -13,6 +13,7 @@ import { Story, UserProfile } from '../types';
 interface StoriesProps {
   profile: UserProfile;
   friendIds: string[]; // List of friends' uids
+  profilesMap: Record<string, UserProfile>;
   onClose: () => void;
 }
 
@@ -25,7 +26,7 @@ const GRADIENTS = [
   'from-purple-950 via-violet-900 to-purple-950'
 ];
 
-export default function Stories({ profile, friendIds, onClose }: StoriesProps) {
+export default function Stories({ profile, friendIds, profilesMap, onClose }: StoriesProps) {
   const [stories, setStories] = useState<Story[]>([]);
   const [activeStoryIdx, setActiveStoryIdx] = useState<number | null>(null);
   const [activeStoryFeed, setActiveStoryFeed] = useState<Story[]>([]);
@@ -50,11 +51,14 @@ export default function Stories({ profile, friendIds, onClose }: StoriesProps) {
     const timeLimit = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const q = query(collection(db, 'stories'));
 
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const activeStories: Story[] = [];
       snapshot.forEach((doc) => {
         const data = doc.data() as Story;
-        const sTime = data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+        const sTime = data.timestamp?.toDate 
+          ? data.timestamp.toDate() 
+          : (data.timestamp ? new Date(data.timestamp) : new Date());
+          
         if (sTime > timeLimit) {
           activeStories.push({ ...data, id: doc.id });
         }
@@ -65,42 +69,37 @@ export default function Stories({ profile, friendIds, onClose }: StoriesProps) {
       // 2. Poster must be either the current user, or an added friend (not random people).
       // 3. If story has closeFriendsOnly = true, only users in close friends list can see.
       // 4. If story has customListOnly = true, only users in custom list can see.
-      const filteredStories: Story[] = [];
-      for (const s of activeStories) {
-        // Fetch poster profile to check blocked state and close friends list
-        try {
-          const posterSnap = await getDoc(doc(db, 'profiles', s.userId));
-          if (posterSnap.exists()) {
-            const posterProf = posterSnap.data() as UserProfile;
-            
-            // Check blocking
-            const hasBlockedMe = posterProf.blockedUsers?.includes(profile.uid);
-            const iHaveBlockedThem = profile.blockedUsers?.includes(s.userId);
-            if (hasBlockedMe || iHaveBlockedThem) continue;
-
-            // Must be current user or added friend (cannot be random)
-            const isFriend = friendIds.includes(s.userId);
-            const isMe = s.userId === profile.uid;
-            if (!isMe && !isFriend) continue;
-
-            // Check close friends constraint
-            if (s.closeFriendsOnly && !isMe) {
-              const inCloseFriends = posterProf.closeFriends?.includes(profile.uid);
-              if (!inCloseFriends) continue;
-            }
-
-            // Check custom list constraint
-            if (s.customListOnly && !isMe) {
-              const inCustomList = posterProf.customList?.includes(profile.uid);
-              if (!inCustomList) continue;
-            }
-
-            filteredStories.push(s);
-          }
-        } catch (e) {
-          console.error(e);
+      const filteredStories = activeStories.filter((s) => {
+        const posterProf = profilesMap[s.userId];
+        if (!posterProf) {
+          // Fallback if profile not loaded yet: if it's current user's story, let's keep it
+          return s.userId === profile.uid;
         }
-      }
+
+        // Check blocking
+        const hasBlockedMe = posterProf.blockedUsers?.includes(profile.uid);
+        const iHaveBlockedThem = profile.blockedUsers?.includes(s.userId);
+        if (hasBlockedMe || iHaveBlockedThem) return false;
+
+        // Must be current user or added friend (cannot be random)
+        const isFriend = friendIds.includes(s.userId);
+        const isMe = s.userId === profile.uid;
+        if (!isMe && !isFriend) return false;
+
+        // Check close friends constraint
+        if (s.closeFriendsOnly && !isMe) {
+          const inCloseFriends = posterProf.closeFriends?.includes(profile.uid);
+          if (!inCloseFriends) return false;
+        }
+
+        // Check custom list constraint
+        if (s.customListOnly && !isMe) {
+          const inCustomList = posterProf.customList?.includes(profile.uid);
+          if (!inCustomList) return false;
+        }
+
+        return true;
+      });
 
       setStories(filteredStories);
     }, (error) => {
@@ -108,7 +107,7 @@ export default function Stories({ profile, friendIds, onClose }: StoriesProps) {
     });
 
     return () => unsubscribe();
-  }, [profile, friendIds]);
+  }, [profile, friendIds, profilesMap]);
 
   const handlePostStory = async (e: React.FormEvent) => {
     e.preventDefault();

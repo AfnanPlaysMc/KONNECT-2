@@ -157,30 +157,30 @@ export default function App() {
         ];
 
         for (const bot of bots) {
-          if (bot.uid === 'orion-ai') {
-            // Seed Orion AI locally instead of Firestore
-            const localChatKey = `konnect_local_chat_orion-ai_${profile.uid}`;
-            const localMsgsKey = `konnect_local_messages_orion-ai_${profile.uid}`;
+          if (bot.uid === 'orion-ai' || bot.uid === 'oxa-llc') {
+            // Seed locally instead of Firestore
+            const localChatKey = `konnect_local_chat_${bot.uid}_${profile.uid}`;
+            const localMsgsKey = `konnect_local_messages_${bot.uid}_${profile.uid}`;
             if (!localStorage.getItem(localChatKey)) {
               localStorage.setItem(localChatKey, JSON.stringify({
-                id: `orion-ai-chat-${profile.uid}`,
-                participants: [profile.uid, 'orion-ai'],
+                id: `${bot.uid}-chat-${profile.uid}`,
+                participants: [profile.uid, bot.uid],
                 lastMessage: {
                   text: bot.welcomeMessage,
                   timestamp: new Date().toISOString(),
-                  senderId: 'orion-ai'
+                  senderId: bot.uid
                 },
                 unreadCount: {
                   [profile.uid]: 0,
-                  'orion-ai': 0
+                  [bot.uid]: 0
                 }
               }));
             }
             if (!localStorage.getItem(localMsgsKey)) {
               localStorage.setItem(localMsgsKey, JSON.stringify([
                 {
-                  id: `welcome-${Date.now()}`,
-                  senderId: 'orion-ai',
+                  id: `welcome-${Date.now()}-${bot.uid}`,
+                  senderId: bot.uid,
                   receiverId: profile.uid,
                   text: bot.welcomeMessage,
                   timestamp: new Date().toISOString(),
@@ -189,7 +189,7 @@ export default function App() {
                 }
               ]));
             }
-            continue; // Skip Firestore seeding for orion-ai
+            continue; // Skip Firestore seeding for local bots
           }
 
           // 1. Ensure profile document exists
@@ -502,7 +502,9 @@ export default function App() {
     setShowStories(false);
     setShowSettings(false);
     setMobileMenuOpen(false);
-    const targetPath = `/chat/friends/${sanitizedPartner.uid}`;
+    const targetPath = sanitizedPartner.uid === 'orion-ai' 
+      ? '/chat/friends/neuroxai' 
+      : `/chat/friends/${sanitizedPartner.uid}`;
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
     }
@@ -510,7 +512,7 @@ export default function App() {
 
   const openChatWithFriend = async (friendUid: string) => {
     if (!profile) return;
-    if (friendUid === 'orion-ai') {
+    if (friendUid === 'orion-ai' || friendUid === 'neuroxai') {
       setActiveChatId(`orion-ai-chat-${profile.uid}`);
       setActivePartner({
         uid: 'orion-ai',
@@ -524,7 +526,7 @@ export default function App() {
       setShowStories(false);
       setShowSettings(false);
       setMobileMenuOpen(false);
-      const targetPath = `/chat/friends/orion-ai`;
+      const targetPath = `/chat/friends/neuroxai`;
       if (window.location.pathname !== targetPath) {
         window.history.pushState(null, '', targetPath);
       }
@@ -852,6 +854,7 @@ export default function App() {
           onOpenSports={() => {}}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
           onOpenChatWithFriend={openChatWithFriend}
+          onLogoClick={navigateToDashboard}
         />
 
         {/* PRIMARY MAIN PANEL */}
@@ -937,6 +940,7 @@ export default function App() {
           <Stories 
             profile={profile}
             friendIds={Object.keys(profilesMap).filter(uid => uid !== profile.uid)}
+            profilesMap={profilesMap}
             onClose={() => setShowStories(false)}
           />
         )}
