@@ -594,7 +594,7 @@ export default function ChatWindow({
   const callRingNode = useRef<any>(null);
   const jitsiApiRef = useRef<any>(null);
   const [jitsiSessionKey, setJitsiSessionKey] = useState(0);
-  const [jitsiDomain, setJitsiDomain] = useState('meet.ffmuc.net'); // Default to meet.ffmuc.net (completely open, free public server, absolutely no moderator or guest login/account required!)
+  const [jitsiDomain, setJitsiDomain] = useState('meet.guifi.net'); // Default to meet.guifi.net (completely open, free public server, absolutely no moderator or guest login/account required!)
 
   // Initialize official Jitsi Meet External API when call is connected
   useEffect(() => {
@@ -669,6 +669,13 @@ export default function ChatWindow({
             });
             jitsiApiRef.current.addEventListener('videoConferenceLeft', () => {
               endCall();
+            });
+            // Handle Jitsi iframe internal fullScreenChanged event to keep UI synchronized
+            jitsiApiRef.current.addEventListener('fullScreenChanged', (e: any) => {
+              console.log("Jitsi fullScreenChanged event:", e);
+              if (e && typeof e.enabled === 'boolean') {
+                setIsCallFullScreen(e.enabled);
+              }
             });
           } catch (e) {
             console.error("Error starting Jitsi Meet External API:", e);
@@ -2402,16 +2409,23 @@ export default function ChatWindow({
 
         {/* FULL CALL PANEL SIMULATION PORTAL OVERLAY */}
         {callSession && (
-          <div className={isCallFullScreen ? "fixed inset-0 z-50 bg-black w-screen h-screen overflow-hidden flex flex-col select-none animate-fadeIn" : "absolute inset-0 z-50 bg-[#020408]/95 backdrop-blur-sm flex items-center justify-center p-4 md:p-6 select-none animate-fadeIn"}>
-            <div className={isCallFullScreen ? "w-full h-full relative flex flex-col" : `w-full bg-gradient-to-b from-[#090e17] to-[#04060b] shadow-2xl flex flex-col justify-between transition-all duration-300 ${
-              callSession.status === 'connected' ? 'max-w-5xl h-[85vh] md:h-[750px] border border-slate-800 rounded-3xl p-6' : 'max-w-md h-[480px] border border-slate-800 rounded-3xl p-6'
-            }`}>
-              
-              {/* TOP INFO & FULLSCREEN HEADER */}
-              {isCallFullScreen ? (
-                <>
-                  {/* Floating Header Info */}
-                  <div className="absolute top-4 left-4 z-50 flex items-center gap-3 bg-[#090e17]/85 backdrop-blur border border-slate-800/80 p-2.5 px-3.5 rounded-2xl shadow-2xl pointer-events-none">
+          <div 
+            id="call-portal-overlay"
+            className={isCallFullScreen 
+              ? "fixed inset-0 z-50 bg-black w-screen h-screen overflow-hidden flex flex-col select-none animate-fadeIn" 
+              : "absolute inset-0 z-50 bg-[#020408]/95 backdrop-blur-sm flex items-center justify-center p-4 md:p-6 select-none animate-fadeIn"
+            }
+          >
+            <div 
+              className={isCallFullScreen 
+                ? "w-full h-full relative flex flex-col" 
+                : "w-full bg-gradient-to-b from-[#090e17] to-[#04060b] shadow-2xl flex flex-col justify-between transition-all duration-300 max-w-5xl h-[85vh] md:h-[750px] border border-slate-800 rounded-3xl p-6"
+              }
+            >
+              {/* STABLE CHILD 1: HEADER INFO */}
+              <div className={isCallFullScreen ? "absolute top-4 left-4 z-50 pointer-events-none" : "space-y-3 pt-2 text-center"}>
+                {isCallFullScreen ? (
+                  <div className="flex items-center gap-3 bg-[#090e17]/85 backdrop-blur border border-slate-800/80 p-2.5 px-3.5 rounded-2xl shadow-2xl">
                     <div className="w-9 h-9 rounded-full border border-indigo-500/40 overflow-hidden">
                       <SecureAvatar src={getBotPhotoURL(partnerProfile.uid, partnerProfile.photoURL)} alt="Avatar" className="w-full h-full object-cover" />
                     </div>
@@ -2425,34 +2439,8 @@ export default function ChatWindow({
                       </div>
                     </div>
                   </div>
-
-                  {/* Floating Top Right Controls */}
-                  <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-                    <button 
-                      onClick={() => setIsCallFullScreen(false)}
-                      className="px-3.5 py-2 bg-[#090e17]/85 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-white rounded-xl backdrop-blur flex items-center gap-1.5 text-xs font-bold shadow-2xl transition active:scale-95 cursor-pointer"
-                      title="Back to Chat Space"
-                    >
-                      <Minimize2 className="w-4 h-4 text-indigo-400" />
-                      <span>Back to Normal</span>
-                    </button>
-                  </div>
-
-                  {/* Floating Bottom Hangup */}
-                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
-                    <button 
-                      onClick={endCall}
-                      className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-2xl shadow-rose-900/60 active:scale-95 hover:scale-105 transition-all flex items-center gap-2 cursor-pointer border border-rose-500/30"
-                    >
-                      <PhoneOff className="w-4 h-4" />
-                      <span>Disconnect Call</span>
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* Top Info */}
-                  <div className="space-y-3 pt-2 text-center">
+                ) : (
+                  <>
                     <div className="relative inline-block mx-auto">
                       <div className="w-16 h-16 rounded-full border-2 border-indigo-500/40 p-1 animate-pulse">
                         <SecureAvatar src={getBotPhotoURL(partnerProfile.uid, partnerProfile.photoURL)} alt="Avatar" className="w-full h-full object-cover rounded-full" />
@@ -2461,92 +2449,134 @@ export default function ChatWindow({
                         <span className="absolute bottom-0 right-1 p-1 bg-indigo-500 text-white rounded-full text-[10px]">📹</span>
                       )}
                     </div>
-                    
                     <h3 className="font-extrabold text-base text-white">{partnerProfile.displayName}</h3>
                     <p className="text-[10px] text-indigo-400 font-mono tracking-widest uppercase">
                       {callSession.status === 'ringing' ? 'Incoming secure line...' : `Secure ${callSession.type} connected`}
                     </p>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
+              </div>
 
-              {/* JITSI MEET CONTAINER - KEEPING THE EXACT SAME DOM ELEMENT UNMOUNT-FREE! */}
+              {/* STABLE CHILD 2: CONTROLS OVERLAY (ABSOLUTE FLOATING ELEMENTS) */}
+              <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+                {isCallFullScreen ? (
+                  <button 
+                    onClick={() => setIsCallFullScreen(false)}
+                    className="px-3.5 py-2 bg-[#090e17]/85 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-white rounded-xl backdrop-blur flex items-center gap-1.5 text-xs font-bold shadow-2xl transition active:scale-95 cursor-pointer"
+                    title="Back to Chat Space"
+                  >
+                    <Minimize2 className="w-4 h-4 text-indigo-400" />
+                    <span>Back to Normal</span>
+                  </button>
+                ) : (
+                  callSession.status === 'connected' && (
+                    <button 
+                      onClick={() => setIsCallFullScreen(true)}
+                      className="p-2 bg-slate-900/90 hover:bg-slate-800 text-white rounded-lg backdrop-blur border border-slate-700/50 flex items-center gap-1.5 text-xs font-semibold shadow-lg transition active:scale-95 cursor-pointer animate-fadeIn"
+                      title="Full Screen Calling"
+                    >
+                      <Maximize2 className="w-4 h-4 text-indigo-400" />
+                      <span>Full Screen</span>
+                    </button>
+                  )
+                )}
+              </div>
+
+              {/* STABLE CHILD 3: THE JITSI MEET CONTAINER - PRESERVING EXACT POSITION & UNMOUNT-FREE STATE! */}
               {callSession.status === 'connected' && (
-                <div className={isCallFullScreen ? "absolute inset-0 z-10 w-full h-full bg-black" : "my-4 flex flex-col justify-center flex-1 min-h-[350px]"}>
+                <div 
+                  key="stable-jitsi-wrapper"
+                  className={isCallFullScreen 
+                    ? "absolute inset-0 z-10 w-full h-full bg-black" 
+                    : "my-4 flex flex-col justify-center flex-1 min-h-[350px]"
+                  }
+                >
                   <div className={isCallFullScreen ? "w-full h-full" : "w-full h-full min-h-[340px] bg-black rounded-2xl overflow-hidden border border-slate-800 relative flex flex-col"}>
-                    {/* Full screen overlay controls for normal view */}
-                    {!isCallFullScreen && (
-                      <div className="absolute top-3 right-3 z-30 flex items-center gap-2">
-                        <button 
-                          onClick={() => setIsCallFullScreen(true)}
-                          className="p-2 bg-slate-900/90 hover:bg-slate-800 text-white rounded-lg backdrop-blur border border-slate-700/50 flex items-center gap-1.5 text-xs font-semibold shadow-lg transition active:scale-95 cursor-pointer animate-fadeIn"
-                          title="Full Screen Calling"
-                        >
-                          <Maximize2 className="w-4 h-4 text-indigo-400" />
-                          <span>Full Screen</span>
-                        </button>
-                      </div>
-                    )}
                     <div id="jitsi-container" className="w-full h-full flex-1" style={{ minHeight: isCallFullScreen ? '100%' : '340px' }} />
                   </div>
                 </div>
               )}
 
-              {/* BOTTOM STATUS & CONTROLS (ONLY IN NORMAL WINDOW VIEW) */}
-              {!isCallFullScreen && (
-                <>
-                  {/* Connection timer and server info */}
+              {/* STABLE CHILD 4: BOTTOM STATUS, SERVER SELECTOR & HANGUP ACTION */}
+              {isCallFullScreen ? (
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
+                  <button 
+                    onClick={endCall}
+                    className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-2xl shadow-rose-900/60 active:scale-95 hover:scale-105 transition-all flex items-center gap-2 cursor-pointer border border-rose-500/30"
+                  >
+                    <PhoneOff className="w-4 h-4" />
+                    <span>Disconnect Call</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-end gap-4 pb-2">
                   {callSession.status === 'connected' && (
-                    <div className="space-y-1 mb-2 text-center">
+                    <div className="space-y-2 text-center w-full">
                       <p className="text-xl font-semibold font-mono text-white tracking-widest animate-pulse">
                         {Math.floor(callTimer / 60).toString().padStart(2, '0')}:{(callTimer % 60).toString().padStart(2, '0')}
                       </p>
                       
-                      {/* Call server indicators */}
-                      <div className="flex items-center justify-center gap-2.5 text-[10px] text-slate-400 bg-slate-950/40 px-3 py-1.5 border border-slate-900 rounded-xl max-w-xs mx-auto">
+                      {/* Call server indicators with interactive domain setting to prevent refusal of connection errors */}
+                      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 text-[10px] text-slate-400 bg-slate-950/70 px-4 py-2 border border-slate-800 rounded-2xl max-w-md mx-auto">
                         <div className="flex items-center gap-1.5 text-emerald-400 font-semibold font-mono">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                          <span>SECURE JITSI DIRECT CALL</span>
+                          <span>SECURE JITSI CONNECTION</span>
+                        </div>
+                        <div className="h-3 w-px bg-slate-800 hidden sm:block" />
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[9px] text-slate-500">Server:</span>
+                          <select 
+                            value={jitsiDomain} 
+                            onChange={(e) => {
+                              console.log("Switching Jitsi server domain to:", e.target.value);
+                              setJitsiDomain(e.target.value);
+                              setJitsiSessionKey(k => k + 1); // Instantly reload Jitsi on the chosen open server
+                            }}
+                            className="bg-slate-900 text-[10px] text-indigo-300 border border-slate-800 hover:border-slate-700 rounded px-2 py-0.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                          >
+                            <option value="meet.guifi.net">meet.guifi.net (No Login, Iframe OK)</option>
+                            <option value="vc.autistici.org">vc.autistici.org (Privacy, Iframe OK)</option>
+                            <option value="fairmeeting.net">fairmeeting.net (No Login, Iframe OK)</option>
+                            <option value="meet.golem.de">meet.golem.de (Secure, Iframe OK)</option>
+                            <option value="meet.jit.si">meet.jit.si (Standard Jitsi)</option>
+                          </select>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Simulated sound warning label */}
                   {callSession.status === 'ringing' && (
                     <p className="text-[10px] text-slate-500 px-6 text-center">
                       Direct connections are fully encrypted end-to-end to secure caller coordinates and metadata.
                     </p>
                   )}
 
-                  {/* Controls */}
-                  <div className="flex justify-center gap-6 pb-2">
+                  {/* Actions buttons */}
+                  <div className="flex justify-center gap-6">
                     {callSession.status === 'ringing' ? (
-                      <>
-                        {callSession.callerId === myProfile.uid ? (
+                      callSession.callerId === myProfile.uid ? (
+                        <button 
+                          onClick={endCall}
+                          className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition-all flex items-center gap-2"
+                        >
+                          <PhoneOff className="w-4 h-4" /> Cancel Call
+                        </button>
+                      ) : (
+                        <>
                           <button 
                             onClick={endCall}
                             className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition-all flex items-center gap-2"
                           >
-                            <PhoneOff className="w-4 h-4" /> Cancel Call
+                            <PhoneOff className="w-4 h-4" /> Decline
                           </button>
-                        ) : (
-                          <>
-                            <button 
-                              onClick={endCall}
-                              className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white rounded-full shadow-lg shadow-rose-600/20 active:scale-95 transition-all flex items-center gap-2"
-                            >
-                              <PhoneOff className="w-4 h-4" /> Decline
-                            </button>
-                            <button 
-                              onClick={acceptCall}
-                              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white rounded-full shadow-lg shadow-emerald-600/20 active:scale-95 transition-all animate-bounce flex items-center gap-2"
-                            >
-                              <Phone className="w-4 h-4" /> Accept
-                            </button>
-                          </>
-                        )}
-                      </>
+                          <button 
+                            onClick={acceptCall}
+                            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white rounded-full shadow-lg shadow-emerald-600/20 active:scale-95 transition-all animate-bounce flex items-center gap-2"
+                          >
+                            <Phone className="w-4 h-4" /> Accept
+                          </button>
+                        </>
+                      )
                     ) : (
                       <button 
                         onClick={endCall}
@@ -2556,7 +2586,7 @@ export default function ChatWindow({
                       </button>
                     )}
                   </div>
-                </>
+                </div>
               )}
 
             </div>
