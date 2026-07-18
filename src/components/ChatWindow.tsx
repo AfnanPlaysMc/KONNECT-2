@@ -598,10 +598,13 @@ export default function ChatWindow({
 
   // Initialize official Jitsi Meet External API when call is connected
   useEffect(() => {
+    let active = true;
     if (callSession?.status === 'connected' && callSession.roomId) {
-      const timer = setTimeout(() => {
-        const container = document.getElementById('jitsi-container');
-        if (container && window.JitsiMeetExternalAPI) {
+      const container = document.getElementById('jitsi-container');
+      if (container) {
+        // Function to start Jitsi after confirming External API is ready
+        const startJitsi = () => {
+          if (!active) return;
           if (jitsiApiRef.current) {
             jitsiApiRef.current.dispose();
             jitsiApiRef.current = null;
@@ -633,7 +636,7 @@ export default function ChatWindow({
                 lobby: {
                   enabled: false
                 },
-                maxMeetingDuration: 3600, // Guarantee up to 1 hour (3600 seconds) duration
+                maxMeetingDuration: 86400, // Guarantee up to 24 hours (completely unlimited duration!)
                 p2p: {
                   enabled: true,
                   preferH264: true
@@ -661,7 +664,7 @@ export default function ChatWindow({
                 avatarUrl: myProfile.photoURL
               }
             };
-            jitsiApiRef.current = new window.JitsiMeetExternalAPI(domain, options);
+            jitsiApiRef.current = new (window as any).JitsiMeetExternalAPI(domain, options);
 
             // Handle hanging up inside Jitsi UI
             jitsiApiRef.current.addEventListener('readyToClose', () => {
@@ -680,11 +683,37 @@ export default function ChatWindow({
           } catch (e) {
             console.error("Error starting Jitsi Meet External API:", e);
           }
+        };
+
+        // Dynamically load the external_api.js from the chosen domain to ensure perfect cross-origin and version compatibility
+        const scriptId = `jitsi-script-${jitsiDomain}`;
+        let script = document.getElementById(scriptId) as HTMLScriptElement;
+        if (!script) {
+          script = document.createElement('script');
+          script.id = scriptId;
+          script.src = `https://${jitsiDomain}/external_api.js`;
+          script.async = true;
+          script.onload = () => {
+            startJitsi();
+          };
+          script.onerror = () => {
+            console.error(`Failed to load Jitsi script from ${jitsiDomain}, falling back to default window check`);
+            if ((window as any).JitsiMeetExternalAPI) {
+              startJitsi();
+            }
+          };
+          document.head.appendChild(script);
+        } else {
+          if ((window as any).JitsiMeetExternalAPI) {
+            startJitsi();
+          } else {
+            script.addEventListener('load', startJitsi);
+          }
         }
-      }, 300);
+      }
 
       return () => {
-        clearTimeout(timer);
+        active = false;
         if (jitsiApiRef.current) {
           jitsiApiRef.current.dispose();
           jitsiApiRef.current = null;
@@ -884,15 +913,7 @@ export default function ChatWindow({
                 setCallTimer(0);
                 setJitsiSessionKey(0); // Reset session key for new call
                 callIntervalRef.current = setInterval(() => {
-                  setCallTimer(prev => {
-                    const next = prev + 1;
-                    // Auto-restart Jitsi Meet iframe every 4 minutes 50 seconds (290 seconds) to bypass 5-minute session limits on public servers seamlessly in 1 second
-                    if (next > 0 && next % 290 === 0) {
-                      console.log("Auto-restarting Jitsi call to extend duration and bypass limits...");
-                      setJitsiSessionKey(k => k + 1);
-                    }
-                    return next;
-                  });
+                  setCallTimer(prev => prev + 1);
                 }, 1000);
               }
             } else if (activeCall.status === 'ringing') {
