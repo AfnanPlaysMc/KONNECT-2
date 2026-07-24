@@ -3,6 +3,7 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signInWithPopup, 
+  signInAnonymously,
   onAuthStateChanged,
   signOut,
   GoogleAuthProvider
@@ -153,7 +154,25 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       await checkUserProfile(result.user.uid);
     } catch (err: any) {
       console.warn('Google Sign-In failed', err);
-      setError(err.message || 'Google Sign-In failed');
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/disallowed-useragent' || err.message?.includes('popup')) {
+        setError('Google Sign-In is restricted inside app webviews. Please sign in with Email / Password or Guest Mode.');
+      } else {
+        setError(err.message || 'Google Sign-In failed');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestAuth = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const userCred = await signInAnonymously(auth);
+      await checkUserProfile(userCred.user.uid);
+    } catch (err: any) {
+      console.warn('Guest Sign-In failed', err);
+      setError(err.message || 'Guest Sign-In failed');
     } finally {
       setLoading(false);
     }
@@ -504,19 +523,29 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               <span className="relative px-3 text-[10px] uppercase text-neutral-500 bg-[#0e121a]">or</span>
             </div>
 
-            <button
-              type="button"
-              onClick={handleGoogleAuth}
-              className="w-full py-3 bg-[#161920] hover:bg-[#20242e] border border-neutral-800 text-[#E4E6EB] rounded-xl text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.47 14.97 1 12 1 7.35 1 3.39 3.65 1.5 7.5l3.8 2.95C6.2 7.37 8.9 5.04 12 5.04z"/>
-                <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.47h6.44c-.28 1.47-1.11 2.72-2.36 3.56l3.66 2.84c2.14-1.97 3.38-4.87 3.38-8.51z"/>
-                <path fill="#FBBC05" d="M5.3 14.95c-.24-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29L1.5 7.42C.54 9.34 0 11.48 0 13.73s.54 4.39 1.5 6.31l3.8-3.09z"/>
-                <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.92l-3.66-2.84c-1.01.68-2.3 1.08-4.3 1.08-3.1 0-5.8-2.33-6.7-5.41L1.5 15.96C3.39 19.81 7.35 23 12 23z"/>
-              </svg>
-              Continue with Google
-            </button>
+            <div className="flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={handleGoogleAuth}
+                className="w-full py-3 bg-[#161920] hover:bg-[#20242e] border border-neutral-800 text-[#E4E6EB] rounded-xl text-sm font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all cursor-pointer"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.47 14.97 1 12 1 7.35 1 3.39 3.65 1.5 7.5l3.8 2.95C6.2 7.37 8.9 5.04 12 5.04z"/>
+                  <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.47h6.44c-.28 1.47-1.11 2.72-2.36 3.56l3.66 2.84c2.14-1.97 3.38-4.87 3.38-8.51z"/>
+                  <path fill="#FBBC05" d="M5.3 14.95c-.24-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29L1.5 7.42C.54 9.34 0 11.48 0 13.73s.54 4.39 1.5 6.31l3.8-3.09z"/>
+                  <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.92l-3.66-2.84c-1.01.68-2.3 1.08-4.3 1.08-3.1 0-5.8-2.33-6.7-5.41L1.5 15.96C3.39 19.81 7.35 23 12 23z"/>
+                </svg>
+                Continue with Google
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGuestAuth}
+                className="w-full py-2.5 bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800/80 text-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all cursor-pointer"
+              >
+                <span>⚡ Instant Guest Access</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

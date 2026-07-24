@@ -18,6 +18,7 @@ import { sendPushToUser } from '../lib/webPush';
 import { EMOJI_LIST } from '../emojis';
 import { SecureAvatar } from './SecureAvatar';
 import { VerifiedBadge } from './VerifiedBadge';
+import { AppLogo } from './AppLogo';
 
 // @ts-ignore
 import orionAiLogo from '../assets/images/orion_ai_logo_1782673841547.jpg';
@@ -685,30 +686,20 @@ export default function ChatWindow({
           }
         };
 
-        // Dynamically load the external_api.js from the chosen domain to ensure perfect cross-origin and version compatibility
-        const scriptId = `jitsi-script-${jitsiDomain}`;
-        let script = document.getElementById(scriptId) as HTMLScriptElement;
-        if (!script) {
-          script = document.createElement('script');
-          script.id = scriptId;
-          script.src = `https://${jitsiDomain}/external_api.js`;
-          script.async = true;
-          script.onload = () => {
-            startJitsi();
-          };
-          script.onerror = () => {
-            console.error(`Failed to load Jitsi script from ${jitsiDomain}, falling back to default window check`);
+        // Boot Jitsi instantly since script is already preloaded in index.html!
+        if ((window as any).JitsiMeetExternalAPI) {
+          startJitsi();
+        } else {
+          // Fallback just in case script takes a moment to load
+          const interval = setInterval(() => {
             if ((window as any).JitsiMeetExternalAPI) {
               startJitsi();
+              clearInterval(interval);
             }
-          };
-          document.head.appendChild(script);
-        } else {
-          if ((window as any).JitsiMeetExternalAPI) {
-            startJitsi();
-          } else {
-            script.addEventListener('load', startJitsi);
-          }
+          }, 30);
+          
+          // Cleanup interval if component unmounts early
+          return () => clearInterval(interval);
         }
       }
 
@@ -2444,9 +2435,12 @@ export default function ChatWindow({
               }
             >
               {/* STABLE CHILD 1: HEADER INFO */}
-              <div className={isCallFullScreen ? "absolute top-4 left-4 z-50 pointer-events-none" : "space-y-3 pt-2 text-center"}>
+              <div className={isCallFullScreen ? "absolute top-4 left-4 z-50 pointer-events-none animate-fadeIn" : "space-y-3 pt-2 text-center animate-fadeIn"}>
                 {isCallFullScreen ? (
                   <div className="flex items-center gap-3 bg-[#090e17]/85 backdrop-blur border border-slate-800/80 p-2.5 px-3.5 rounded-2xl shadow-2xl">
+                    <div className="flex items-center gap-1.5 border-r border-slate-800/80 pr-2.5">
+                      <AppLogo className="w-5 h-5 animate-pulse" />
+                    </div>
                     <div className="w-9 h-9 rounded-full border border-indigo-500/40 overflow-hidden">
                       <SecureAvatar src={getBotPhotoURL(partnerProfile.uid, partnerProfile.photoURL)} alt="Avatar" className="w-full h-full object-cover" />
                     </div>
@@ -2462,6 +2456,11 @@ export default function ChatWindow({
                   </div>
                 ) : (
                   <>
+                    {/* App Logo Displayed Elegantly in the call panel */}
+                    <div className="flex items-center justify-center gap-2 mb-2 select-none">
+                      <AppLogo className="w-7 h-7" />
+                      <span className="text-xs font-extrabold tracking-widest text-indigo-400 uppercase font-mono">KONNECT</span>
+                    </div>
                     <div className="relative inline-block mx-auto">
                       <div className="w-16 h-16 rounded-full border-2 border-indigo-500/40 p-1 animate-pulse">
                         <SecureAvatar src={getBotPhotoURL(partnerProfile.uid, partnerProfile.photoURL)} alt="Avatar" className="w-full h-full object-cover rounded-full" />
@@ -2532,37 +2531,10 @@ export default function ChatWindow({
               ) : (
                 <div className="flex flex-col items-center justify-end gap-4 pb-2">
                   {callSession.status === 'connected' && (
-                    <div className="space-y-2 text-center w-full">
-                      <p className="text-xl font-semibold font-mono text-white tracking-widest animate-pulse">
+                    <div className="text-center w-full my-1">
+                      <p className="text-xl font-semibold font-mono text-emerald-400 tracking-widest animate-pulse">
                         {Math.floor(callTimer / 60).toString().padStart(2, '0')}:{(callTimer % 60).toString().padStart(2, '0')}
                       </p>
-                      
-                      {/* Call server indicators with interactive domain setting to prevent refusal of connection errors */}
-                      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 text-[10px] text-slate-400 bg-slate-950/70 px-4 py-2 border border-slate-800 rounded-2xl max-w-md mx-auto">
-                        <div className="flex items-center gap-1.5 text-emerald-400 font-semibold font-mono">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                          <span>SECURE JITSI CONNECTION</span>
-                        </div>
-                        <div className="h-3 w-px bg-slate-800 hidden sm:block" />
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-[9px] text-slate-500">Server:</span>
-                          <select 
-                            value={jitsiDomain} 
-                            onChange={(e) => {
-                              console.log("Switching Jitsi server domain to:", e.target.value);
-                              setJitsiDomain(e.target.value);
-                              setJitsiSessionKey(k => k + 1); // Instantly reload Jitsi on the chosen open server
-                            }}
-                            className="bg-slate-900 text-[10px] text-indigo-300 border border-slate-800 hover:border-slate-700 rounded px-2 py-0.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
-                          >
-                            <option value="meet.guifi.net">meet.guifi.net (No Login, Iframe OK)</option>
-                            <option value="vc.autistici.org">vc.autistici.org (Privacy, Iframe OK)</option>
-                            <option value="fairmeeting.net">fairmeeting.net (No Login, Iframe OK)</option>
-                            <option value="meet.golem.de">meet.golem.de (Secure, Iframe OK)</option>
-                            <option value="meet.jit.si">meet.jit.si (Standard Jitsi)</option>
-                          </select>
-                        </div>
-                      </div>
                     </div>
                   )}
 
